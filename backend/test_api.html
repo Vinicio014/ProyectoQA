@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Backend - Sistema Uniformes</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .success { background: #28a745; }
+        .warning { background: #ffc107; color: black; }
+        .danger { background: #dc3545; }
+        
+        .response {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .input-group input, .input-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .method-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .get { background: #28a745; color: white; }
+        .post { background: #007bff; color: white; }
+        .put { background: #ffc107; color: black; }
+        .delete { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test API Backend - Sistema de Uniformes Deportivos</h1>
+        
+        <!-- Configuración -->
+        <div class="test-section">
+            <h3>Configuración</h3>
+            <div class="input-group">
+                <label>URL Base de la API:</label>
+                <input type="text" id="apiUrl" value="http://localhost/ProyectoQA/backend/api/rutas_api.php">
+                <small>Ajustar según tu servidor local</small>
+            </div>
+        </div>
+
+        <!-- Test de Conexión -->
+        <div class="test-section">
+            <h3>Test de Conexión</h3>
+            <p>Verificar que el endpoint principal responde</p>
+            <button onclick="testConnection()">Probar Conexión</button>
+            <div id="connectionResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- Test de Productos -->
+        <div class="test-section">
+            <h3>Test de Productos</h3>
+            
+            <div style="margin-bottom: 15px;">
+                <span class="method-badge get">GET</span>
+                <button onclick="testGetProductos()">Listar Productos</button>
+                <button onclick="testGetProducto(1)">Obtener Producto #1</button>
+                <button onclick="testBuscarProductos('camiseta')">Buscar "camiseta"</button>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <span class="method-badge post">POST</span>
+                <button onclick="testCreateProducto()">Crear Producto</button>
+            </div>
+            
+            <div id="productosResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- Test de Usuarios -->
+        <div class="test-section">
+            <h3>Test de Usuarios</h3>
+            
+            <div style="margin-bottom: 15px;">
+                <span class="method-badge get">GET</span>
+                <button onclick="testGetUsuarios()">Listar Usuarios</button>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <span class="method-badge post">POST</span>
+                <button onclick="testLogin()">Login Test</button>
+                <button onclick="testCreateUsuario()">Crear Usuario</button>
+            </div>
+            
+            <div id="usuariosResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- Test de Ventas -->
+        <div class="test-section">
+            <h3>Test de Ventas</h3>
+            
+            <div style="margin-bottom: 15px;">
+                <span class="method-badge get">GET</span>
+                <button onclick="testGetVentas()">Listar Ventas</button>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <span class="method-badge post">POST</span>
+                <button onclick="testCreateVenta()">Crear Venta</button>
+            </div>
+            
+            <div id="ventasResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <!-- Logs generales -->
+        <div class="test-section">
+            <h3>Log de Respuestas</h3>
+            <button onclick="clearLog()">Limpiar Log</button>
+            <div id="generalLog" class="response"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuración
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value;
+        }
+
+        // Función auxiliar para hacer requests
+        async function makeRequest(endpoint, method = 'GET', data = null) {
+            const url = `${getApiUrl()}${endpoint}`;
+            
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            };
+            
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+            
+            try {
+                const response = await fetch(url, options);
+                const result = await response.json();
+                
+                return {
+                    status: response.status,
+                    data: result,
+                    success: response.ok
+                };
+            } catch (error) {
+                return {
+                    status: 0,
+                    data: { error: error.message },
+                    success: false
+                };
+            }
+        }
+
+        // Función para mostrar respuestas
+        function showResponse(elementId, response, title = '') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            
+            let statusClass = response.success ? 'success' : 'danger';
+            let statusText = response.success ? 'SUCCESS' : 'ERROR';
+            
+            element.innerHTML = `
+[${timestamp}] ${title} - STATUS: ${response.status} (${statusText})
+${JSON.stringify(response.data, null, 2)}
+            `;
+            element.style.display = 'block';
+            
+            // También agregar al log general
+            addToLog(`${title} - ${statusText}`, response);
+        }
+
+        // Log general
+        function addToLog(title, response) {
+            const log = document.getElementById('generalLog');
+            const timestamp = new Date().toLocaleTimeString();
+            log.innerHTML += `[${timestamp}] ${title}\n${JSON.stringify(response.data, null, 2)}\n\n`;
+        }
+
+        function clearLog() {
+            document.getElementById('generalLog').innerHTML = '';
+        }
+
+        // Tests de Conexión
+        async function testConnection() {
+            const response = await makeRequest('/productos');
+            showResponse('connectionResponse', response, 'Test Conexión');
+        }
+
+        // Tests de Productos
+        async function testGetProductos() {
+            const response = await makeRequest('/productos');
+            showResponse('productosResponse', response, 'GET Productos');
+        }
+
+        async function testGetProducto(id) {
+            const response = await makeRequest(`/productos/${id}`);
+            showResponse('productosResponse', response, `GET Producto #${id}`);
+        }
+
+        async function testBuscarProductos(termino) {
+            const response = await makeRequest(`/productos?buscar=${termino}`);
+            showResponse('productosResponse', response, `Buscar "${termino}"`);
+        }
+
+        async function testCreateProducto() {
+            const productoTest = {
+                nombre: "Camiseta Test",
+                descripcion: "Producto de prueba",
+                codigo: "TEST001",
+                precio: 25.99,
+                costo: 15.00,
+                stock: 10,
+                stock_minimo: 5,
+                categoria_id: 1,
+                tipo: "UNIFORME",
+                genero: "UNISEX",
+                deporte: "Fútbol",
+                marca: "Test Brand",
+                color: "Azul",
+                tallas: ["S", "M", "L"],
+                imagenes: ["test.jpg"],
+                estado: "ACTIVO"
+            };
+            
+            const response = await makeRequest('/productos', 'POST', productoTest);
+            showResponse('productosResponse', response, 'POST Crear Producto');
+        }
+
+        // Tests de Usuarios
+        async function testGetUsuarios() {
+            const response = await makeRequest('/usuarios');
+            showResponse('usuariosResponse', response, 'GET Usuarios');
+        }
+
+        async function testLogin() {
+            const loginData = {
+                email: "admin@test.com",
+                password: "123456"
+            };
+            
+            const response = await makeRequest('/usuarios/login', 'POST', loginData);
+            showResponse('usuariosResponse', response, 'POST Login');
+        }
+
+        async function testCreateUsuario() {
+            const usuarioTest = {
+                nombre: "Usuario Test",
+                email: "test@ejemplo.com",
+                password: "123456",
+                rol_id: 1,
+                telefono: "1234567890",
+                estado: "ACTIVO"
+            };
+            
+            const response = await makeRequest('/usuarios', 'POST', usuarioTest);
+            showResponse('usuariosResponse', response, 'POST Crear Usuario');
+        }
+
+        // Tests de Ventas
+        async function testGetVentas() {
+            const response = await makeRequest('/ventas');
+            showResponse('ventasResponse', response, 'GET Ventas');
+        }
+
+        async function testCreateVenta() {
+            const ventaTest = {
+                cliente_id: 1,
+                fecha: new Date().toISOString().split('T')[0],
+                productos: [
+                    {
+                        producto_id: 1,
+                        cantidad: 2,
+                        precio_unitario: 25.99
+                    }
+                ],
+                metodo_pago: "EFECTIVO",
+                observaciones: "Venta de prueba"
+            };
+            
+            const response = await makeRequest('/ventas', 'POST', ventaTest);
+            showResponse('ventasResponse', response, 'POST Crear Venta');
+        }
+
+        // Mostrar información inicial
+        window.onload = function() {
+            addToLog('Sistema iniciado', { data: 'Test API cargado correctamente' });
+        }
+    </script>
+</body>
+</html>
