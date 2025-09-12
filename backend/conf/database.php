@@ -4,7 +4,7 @@ class Database {
     private $host = 'localhost';
     private $db_name = 'Uniformes_deportivos'; //nombre BD
     private $username = 'root'; //usuario de MySQL
-    private $password = 'Yd]U(P/>.B'; //Password
+    private $password = ''; //Password
     private $conn;
 
     public function getConnection() {
