@@ -22,18 +22,14 @@ class DetalleVentaRepository
     public function create(DetalleVentaEntity $detalle): ?DetalleVentaEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (venta_id, producto_id, cantidad, precio_unitario, subtotal) 
-                    VALUES (:venta_id, :producto_id, :cantidad, :precio_unitario, :subtotal)";
-            
-            $params = [
-                'venta_id' => $detalle->getVentaId(),
-                'producto_id' => $detalle->getProductoId(),
+            $data = [
+                'idVenta' => $detalle->getIdVenta(),
+                'idProducto' => $detalle->getIdProducto(),
                 'cantidad' => $detalle->getCantidad(),
-                'precio_unitario' => $detalle->getPrecioUnitario(),
-                'subtotal' => $detalle->getSubtotal()
+                'sub_total' => $detalle->getSubTotal()
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -53,12 +49,12 @@ class DetalleVentaRepository
     {
         try {
             $sql = "SELECT dv.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           v.fecha_venta
+                           p.nombre as producto_nombre,
+                           v.fechaRegistro as fecha_venta
                     FROM {$this->table} dv 
-                    LEFT JOIN producto p ON dv.producto_id = p.id 
-                    LEFT JOIN venta v ON dv.venta_id = v.id 
-                    WHERE dv.id = :id";
+                    LEFT JOIN producto p ON dv.idProducto = p.idProducto 
+                    LEFT JOIN venta v ON dv.idVenta = v.idVenta 
+                    WHERE dv.idDetalleVenta = :id";
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -75,14 +71,14 @@ class DetalleVentaRepository
     {
         try {
             $sql = "SELECT dv.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           v.fecha_venta
+                           p.nombre as producto_nombre,
+                           v.fechaRegistro as fecha_venta
                     FROM {$this->table} dv 
-                    LEFT JOIN producto p ON dv.producto_id = p.id 
-                    LEFT JOIN venta v ON dv.venta_id = v.id 
-                    WHERE dv.venta_id = :venta_id
-                    ORDER BY dv.id";
-            $results = $this->connectionManager->selectAll($sql, ['venta_id' => $ventaId]);
+                    LEFT JOIN producto p ON dv.idProducto = p.idProducto 
+                    LEFT JOIN venta v ON dv.idVenta = v.idVenta 
+                    WHERE dv.idVenta = :venta_id
+                    ORDER BY dv.idDetalleVenta";
+            $results = $this->connectionManager->select($sql, ['venta_id' => $ventaId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -98,14 +94,14 @@ class DetalleVentaRepository
     {
         try {
             $sql = "SELECT dv.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           v.fecha_venta
+                           p.nombre as producto_nombre,
+                           v.fechaRegistro as fecha_venta
                     FROM {$this->table} dv 
-                    LEFT JOIN producto p ON dv.producto_id = p.id 
-                    LEFT JOIN venta v ON dv.venta_id = v.id 
-                    WHERE dv.producto_id = :producto_id
-                    ORDER BY v.fecha_venta DESC";
-            $results = $this->connectionManager->selectAll($sql, ['producto_id' => $productoId]);
+                    LEFT JOIN producto p ON dv.idProducto = p.idProducto 
+                    LEFT JOIN venta v ON dv.idVenta = v.idVenta 
+                    WHERE dv.idProducto = :producto_id
+                    ORDER BY v.fechaRegistro DESC";
+            $results = $this->connectionManager->select($sql, ['producto_id' => $productoId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -121,13 +117,13 @@ class DetalleVentaRepository
     {
         try {
             $sql = "SELECT dv.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           v.fecha_venta
+                           p.nombre as producto_nombre,
+                           v.fechaRegistro as fecha_venta
                     FROM {$this->table} dv 
-                    LEFT JOIN producto p ON dv.producto_id = p.id 
-                    LEFT JOIN venta v ON dv.venta_id = v.id 
-                    ORDER BY v.fecha_venta DESC, dv.id";
-            $results = $this->connectionManager->selectAll($sql);
+                    LEFT JOIN producto p ON dv.idProducto = p.idProducto 
+                    LEFT JOIN venta v ON dv.idVenta = v.idVenta 
+                    ORDER BY v.fechaRegistro DESC, dv.idDetalleVenta";
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -142,22 +138,18 @@ class DetalleVentaRepository
     public function update(DetalleVentaEntity $detalle): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET venta_id = :venta_id, producto_id = :producto_id, 
-                        cantidad = :cantidad, precio_unitario = :precio_unitario, 
-                        subtotal = :subtotal
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $detalle->getId(),
-                'venta_id' => $detalle->getVentaId(),
-                'producto_id' => $detalle->getProductoId(),
+            $data = [
+                'idVenta' => $detalle->getIdVenta(),
+                'idProducto' => $detalle->getIdProducto(),
                 'cantidad' => $detalle->getCantidad(),
-                'precio_unitario' => $detalle->getPrecioUnitario(),
-                'subtotal' => $detalle->getSubtotal()
+                'sub_total' => $detalle->getSubTotal()
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idDetalleVenta = :id";
+            $whereParams = ['id' => $detalle->getIdDetalleVenta()];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating detalle venta: " . $e->getMessage());
             return false;
@@ -170,8 +162,11 @@ class DetalleVentaRepository
     public function delete(int $id): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE id = :id";
-            return $this->connectionManager->delete($sql, ['id' => $id]);
+            $where = "idDetalleVenta = :id";
+            $params = ['id' => $id];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting detalle venta: " . $e->getMessage());
             return false;
@@ -184,8 +179,11 @@ class DetalleVentaRepository
     public function deleteByVenta(int $ventaId): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE venta_id = :venta_id";
-            return $this->connectionManager->delete($sql, ['venta_id' => $ventaId]);
+            $where = "idVenta = :venta_id";
+            $params = ['venta_id' => $ventaId];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting detalles by venta: " . $e->getMessage());
             return false;
@@ -198,8 +196,9 @@ class DetalleVentaRepository
     public function calculateVentaSubtotal(int $ventaId): float
     {
         try {
-            $sql = "SELECT COALESCE(SUM(subtotal), 0) as total FROM {$this->table} 
-                    WHERE venta_id = :venta_id";
+            $sql = "SELECT COALESCE(SUM(sub_total), 0) as total 
+                    FROM {$this->table} 
+                    WHERE idVenta = :venta_id";
             $result = $this->connectionManager->selectOne($sql, ['venta_id' => $ventaId]);
             
             return (float)($result['total'] ?? 0);
@@ -215,18 +214,17 @@ class DetalleVentaRepository
     public function getMostSoldProducts(int $limit = 10): array
     {
         try {
-            $sql = "SELECT p.id, p.nombre, p.codigo, 
+            $sql = "SELECT p.idProducto, p.nombre, 
                            SUM(dv.cantidad) as total_vendido,
-                           COUNT(DISTINCT dv.venta_id) as numero_ventas
+                           COUNT(DISTINCT dv.idVenta) as numero_ventas,
+                           SUM(dv.sub_total) as ingreso_total
                     FROM {$this->table} dv
-                    INNER JOIN producto p ON dv.producto_id = p.id
-                    GROUP BY p.id
+                    INNER JOIN producto p ON dv.idProducto = p.idProducto
+                    GROUP BY p.idProducto, p.nombre
                     ORDER BY total_vendido DESC
-                    LIMIT :limit";
+                    LIMIT {$limit}";
                     
-            $results = $this->connectionManager->selectAll($sql, ['limit' => $limit]);
-            
-            return $results;
+            return $this->connectionManager->select($sql);
         } catch (Exception $e) {
             error_log("Error getting most sold products: " . $e->getMessage());
             return [];
@@ -239,8 +237,9 @@ class DetalleVentaRepository
     public function getProductQuantitySold(int $productoId): int
     {
         try {
-            $sql = "SELECT COALESCE(SUM(cantidad), 0) as total FROM {$this->table} 
-                    WHERE producto_id = :producto_id";
+            $sql = "SELECT COALESCE(SUM(cantidad), 0) as total 
+                    FROM {$this->table} 
+                    WHERE idProducto = :producto_id";
             $result = $this->connectionManager->selectOne($sql, ['producto_id' => $productoId]);
             
             return (int)($result['total'] ?? 0);
@@ -257,16 +256,16 @@ class DetalleVentaRepository
     {
         try {
             $sql = "SELECT dv.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           v.fecha_venta
+                           p.nombre as producto_nombre,
+                           v.fechaRegistro as fecha_venta
                     FROM {$this->table} dv 
-                    LEFT JOIN producto p ON dv.producto_id = p.id 
-                    LEFT JOIN venta v ON dv.venta_id = v.id 
-                    WHERE DATE(v.fecha_venta) BETWEEN :fecha_inicio AND :fecha_fin
-                    ORDER BY v.fecha_venta DESC";
+                    LEFT JOIN producto p ON dv.idProducto = p.idProducto 
+                    LEFT JOIN venta v ON dv.idVenta = v.idVenta 
+                    WHERE DATE(v.fechaRegistro) BETWEEN :fecha_inicio AND :fecha_fin
+                    ORDER BY v.fechaRegistro DESC";
                     
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
-            $results = $this->connectionManager->selectAll($sql, $params);
+            $results = $this->connectionManager->select($sql, $params);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -276,17 +275,48 @@ class DetalleVentaRepository
     }
 
     /**
+     * Contar detalles por venta
+     */
+    public function countByVenta(int $ventaId): int
+    {
+        try {
+            return $this->connectionManager->count(
+                $this->table,
+                'idVenta = :venta_id',
+                ['venta_id' => $ventaId]
+            );
+        } catch (Exception $e) {
+            error_log("Error counting by venta: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
      * Mapear datos de BD a entidad
      */
     private function mapToEntity(array $data): DetalleVentaEntity
     {
         $detalle = new DetalleVentaEntity();
-        $detalle->setId($data['id']);
-        $detalle->setVentaId($data['venta_id']);
-        $detalle->setProductoId($data['producto_id']);
-        $detalle->setCantidad($data['cantidad']);
-        $detalle->setPrecioUnitario($data['precio_unitario']);
-        $detalle->setSubtotal($data['subtotal']);
+        
+        if (isset($data['idDetalleVenta'])) {
+            $detalle->setIdDetalleVenta((int)$data['idDetalleVenta']);
+        }
+        
+        if (isset($data['idVenta'])) {
+            $detalle->setIdVenta((int)$data['idVenta']);
+        }
+        
+        if (isset($data['idProducto'])) {
+            $detalle->setIdProducto((int)$data['idProducto']);
+        }
+        
+        if (isset($data['cantidad'])) {
+            $detalle->setCantidad((int)$data['cantidad']);
+        }
+        
+        if (isset($data['sub_total'])) {
+            $detalle->setSubTotal((float)$data['sub_total']);
+        }
         
         return $detalle;
     }

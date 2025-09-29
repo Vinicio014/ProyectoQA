@@ -1,15 +1,15 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\PedidoEntity;
-use Proyecto\Entities\DetallePedidoEntity;
-use Proyecto\Entities\DetalleUniformeEntity;
-use Proyecto\Repositories\PedidoRepository;
-use Proyecto\Repositories\DetallePedidoRepository;
-use Proyecto\Repositories\DetalleUniformeRepository;
-use Proyecto\Repositories\ClienteRepository;
-use Proyecto\Repositories\ProductoRepository;
+use App\Entities\PedidoEntity;
+use App\Entities\DetallePedidoEntity;
+use App\Entities\DetalleUniformeEntity;
+use App\Repositories\PedidoRepository;
+use App\Repositories\DetallePedidoRepository;
+use App\Repositories\DetalleUniformeRepository;
+use App\Repositories\ClienteRepository;
+use App\Repositories\ProductoRepository;
 use Exception;
 
 /**
@@ -45,7 +45,7 @@ class PedidoService
     {
         try {
             // Validar cliente
-            $cliente = $this->clienteRepository->obtenerPorId($datosPedido['cliente_id']);
+            $cliente = $this->clienteRepository->findById($datosPedido['idCliente']);
             if (!$cliente) {
                 return [
                     'exito' => false,
@@ -55,56 +55,55 @@ class PedidoService
             }
 
             // Validar productos
-            $validacionProductos = $this->validarProductosPedido($datosPedido['productos']);
-            if (!$validacionProductos['exito']) {
-                return $validacionProductos;
+            if (empty($datosPedido['productos'])) {
+                return [
+                    'exito' => false,
+                    'mensaje' => 'Debe agregar al menos un producto',
+                    'datos' => null
+                ];
             }
-
-            // Calcular totales
-            $totales = $this->calcularTotalesPedido($datosPedido['productos']);
 
             // Crear pedido
             $pedido = new PedidoEntity();
-            $pedido->setClienteId($datosPedido['cliente_id']);
-            $pedido->setFechaPedido(new \DateTime($datosPedido['fecha_pedido'] ?? 'now'));
-            $pedido->setFechaEntrega(new \DateTime($datosPedido['fecha_entrega']));
-            $pedido->setSubtotal($totales['subtotal']);
-            $pedido->setImpuesto($totales['impuesto']);
-            $pedido->setTotal($totales['total']);
-            $pedido->setDescuento($datosPedido['descuento'] ?? 0);
-            $pedido->setObservaciones($datosPedido['observaciones'] ?? '');
-            $pedido->setEstado($datosPedido['estado'] ?? 'PENDIENTE');
+            $pedido->setIdCliente($datosPedido['idCliente']);
+            $pedido->setFechaPedido(new \DateTime($datosPedido['fechaPedido'] ?? 'now'));
+            $pedido->setEstadoPedido($datosPedido['estadoPedido'] ?? 'Pendiente');
 
-            // Iniciar transacción
-            $this->pedidoRepository->iniciarTransaccion();
+            $pedidoCreado = $this->pedidoRepository->create($pedido);
 
-            try {
-                $pedidoCreado = $this->pedidoRepository->crear($pedido);
+            if (!$pedidoCreado) {
+                return [
+                    'exito' => false,
+                    'mensaje' => 'Error al crear el pedido',
+                    'datos' => null
+                ];
+            }
 
-                // Crear detalles del pedido
-                foreach ($datosPedido['productos'] as $itemProducto) {
-                    $detallePedido = $this->crearDetallePedido($pedidoCreado->getId(), $itemProducto);
+            // Crear detalles del pedido
+            $detallesCreados = [];
+            foreach ($datosPedido['productos'] as $itemProducto) {
+                $detallePedido = $this->crearDetallePedido($pedidoCreado->getIdPedido(), $itemProducto);
+                
+                if ($detallePedido) {
+                    $detallesCreados[] = $detallePedido;
                     
-                    // Si el producto es un uniforme, crear detalles específicos
+                    // Si tiene uniformes, crearlos
                     if (isset($itemProducto['uniformes']) && !empty($itemProducto['uniformes'])) {
                         foreach ($itemProducto['uniformes'] as $uniforme) {
-                            $this->crearDetalleUniforme($detallePedido->getId(), $uniforme);
+                            $this->crearDetalleUniforme($detallePedido->getIdDetallePedido(), $uniforme);
                         }
                     }
                 }
-
-                $this->pedidoRepository->confirmarTransaccion();
-
-                return [
-                    'exito' => true,
-                    'mensaje' => 'Pedido creado exitosamente',
-                    'datos' => $this->formatearPedido($pedidoCreado)
-                ];
-
-            } catch (Exception $e) {
-                $this->pedidoRepository->revertirTransaccion();
-                throw $e;
             }
+
+            return [
+                'exito' => true,
+                'mensaje' => 'Pedido creado exitosamente',
+                'datos' => [
+                    'pedido' => $pedidoCreado->toArray(),
+                    'detalles' => array_map(fn($d) => $d->toArray(), $detallesCreados)
+                ]
+            ];
 
         } catch (Exception $e) {
             return [
@@ -121,7 +120,7 @@ class PedidoService
     public function obtenerPedidoPorId(int $id): array
     {
         try {
-            $pedido = $this->pedidoRepository->obtenerPorId($id);
+            $pedido = $this->pedidoRepository->findById($id);
 
             if (!$pedido) {
                 return [
@@ -134,7 +133,7 @@ class PedidoService
             return [
                 'exito' => true,
                 'mensaje' => 'Pedido encontrado',
-                'datos' => $this->formatearPedido($pedido)
+                'datos' => $pedido->toArray()
             ];
 
         } catch (Exception $e) {
@@ -147,17 +146,17 @@ class PedidoService
     }
 
     /**
-     * Listar pedidos con filtros
+     * Listar todos los pedidos
      */
-    public function listarPedidos(array $filtros = []): array
+    public function listarPedidos(): array
     {
         try {
-            $pedidos = $this->pedidoRepository->listarConFiltros($filtros);
+            $pedidos = $this->pedidoRepository->findAll();
             
             return [
                 'exito' => true,
                 'mensaje' => 'Pedidos obtenidos exitosamente',
-                'datos' => array_map([$this, 'formatearPedido'], $pedidos)
+                'datos' => array_map(fn($p) => $p->toArray(), $pedidos)
             ];
 
         } catch (Exception $e) {
@@ -175,7 +174,7 @@ class PedidoService
     public function obtenerPedidosPorCliente(int $clienteId): array
     {
         try {
-            $cliente = $this->clienteRepository->obtenerPorId($clienteId);
+            $cliente = $this->clienteRepository->findById($clienteId);
             if (!$cliente) {
                 return [
                     'exito' => false,
@@ -184,12 +183,12 @@ class PedidoService
                 ];
             }
 
-            $pedidos = $this->pedidoRepository->obtenerPorCliente($clienteId);
+            $pedidos = $this->pedidoRepository->findByClient($clienteId);
             
             return [
                 'exito' => true,
                 'mensaje' => 'Pedidos del cliente obtenidos',
-                'datos' => array_map([$this, 'formatearPedido'], $pedidos)
+                'datos' => array_map(fn($p) => $p->toArray(), $pedidos)
             ];
 
         } catch (Exception $e) {
@@ -202,12 +201,35 @@ class PedidoService
     }
 
     /**
-     * Actualizar estado del pedido
+     * Obtener pedidos por estado
      */
-    public function actualizarEstadoPedido(int $id, string $nuevoEstado, string $observaciones = ''): array
+    public function obtenerPedidosPorEstado(string $estado): array
     {
         try {
-            $pedido = $this->pedidoRepository->obtenerPorId($id);
+            $pedidos = $this->pedidoRepository->findByStatus($estado);
+            
+            return [
+                'exito' => true,
+                'mensaje' => 'Pedidos obtenidos exitosamente',
+                'datos' => array_map(fn($p) => $p->toArray(), $pedidos)
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al obtener pedidos por estado: ' . $e->getMessage(),
+                'datos' => []
+            ];
+        }
+    }
+
+    /**
+     * Actualizar estado del pedido
+     */
+    public function actualizarEstadoPedido(int $id, string $nuevoEstado): array
+    {
+        try {
+            $pedido = $this->pedidoRepository->findById($id);
 
             if (!$pedido) {
                 return [
@@ -217,30 +239,31 @@ class PedidoService
                 ];
             }
 
-            $estadosValidos = ['PENDIENTE', 'EN_PROCESO', 'COMPLETADO', 'CANCELADO'];
+            $estadosValidos = ['Pendiente', 'En proceso', 'Completado', 'Cancelado'];
             if (!in_array($nuevoEstado, $estadosValidos)) {
                 return [
                     'exito' => false,
-                    'mensaje' => 'Estado no válido',
+                    'mensaje' => 'Estado no válido. Debe ser: ' . implode(', ', $estadosValidos),
                     'datos' => null
                 ];
             }
 
-            $estadoAnterior = $pedido->getEstado();
-            $pedido->setEstado($nuevoEstado);
-            
-            if (!empty($observaciones)) {
-                $observacionesActuales = $pedido->getObservaciones();
-                $nuevasObservaciones = $observacionesActuales . "\n[" . date('Y-m-d H:i') . "] Estado: $estadoAnterior → $nuevoEstado. $observaciones";
-                $pedido->setObservaciones($nuevasObservaciones);
+            $pedido->setEstadoPedido($nuevoEstado);
+            $resultado = $this->pedidoRepository->update($pedido);
+
+            if ($resultado) {
+                $pedidoActualizado = $this->pedidoRepository->findById($id);
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Estado del pedido actualizado exitosamente',
+                    'datos' => $pedidoActualizado->toArray()
+                ];
             }
 
-            $pedidoActualizado = $this->pedidoRepository->actualizar($pedido);
-
             return [
-                'exito' => true,
-                'mensaje' => 'Estado del pedido actualizado exitosamente',
-                'datos' => $this->formatearPedido($pedidoActualizado)
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar el estado',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
@@ -255,10 +278,10 @@ class PedidoService
     /**
      * Cancelar pedido
      */
-    public function cancelarPedido(int $id, string $motivo = ''): array
+    public function cancelarPedido(int $id): array
     {
         try {
-            $pedido = $this->pedidoRepository->obtenerPorId($id);
+            $pedido = $this->pedidoRepository->findById($id);
 
             if (!$pedido) {
                 return [
@@ -268,7 +291,7 @@ class PedidoService
                 ];
             }
 
-            if ($pedido->getEstado() === 'COMPLETADO') {
+            if ($pedido->getEstadoPedido() === 'Completado') {
                 return [
                     'exito' => false,
                     'mensaje' => 'No se puede cancelar un pedido completado',
@@ -276,7 +299,7 @@ class PedidoService
                 ];
             }
 
-            if ($pedido->getEstado() === 'CANCELADO') {
+            if ($pedido->getEstadoPedido() === 'Cancelado') {
                 return [
                     'exito' => false,
                     'mensaje' => 'El pedido ya está cancelado',
@@ -284,7 +307,7 @@ class PedidoService
                 ];
             }
 
-            return $this->actualizarEstadoPedido($id, 'CANCELADO', 'CANCELADO: ' . $motivo);
+            return $this->actualizarEstadoPedido($id, 'Cancelado');
 
         } catch (Exception $e) {
             return [
@@ -298,10 +321,10 @@ class PedidoService
     /**
      * Completar pedido
      */
-    public function completarPedido(int $id, string $observaciones = ''): array
+    public function completarPedido(int $id): array
     {
         try {
-            $pedido = $this->pedidoRepository->obtenerPorId($id);
+            $pedido = $this->pedidoRepository->findById($id);
 
             if (!$pedido) {
                 return [
@@ -311,7 +334,7 @@ class PedidoService
                 ];
             }
 
-            if ($pedido->getEstado() === 'CANCELADO') {
+            if ($pedido->getEstadoPedido() === 'Cancelado') {
                 return [
                     'exito' => false,
                     'mensaje' => 'No se puede completar un pedido cancelado',
@@ -319,7 +342,7 @@ class PedidoService
                 ];
             }
 
-            if ($pedido->getEstado() === 'COMPLETADO') {
+            if ($pedido->getEstadoPedido() === 'Completado') {
                 return [
                     'exito' => false,
                     'mensaje' => 'El pedido ya está completado',
@@ -327,7 +350,7 @@ class PedidoService
                 ];
             }
 
-            return $this->actualizarEstadoPedido($id, 'COMPLETADO', 'COMPLETADO: ' . $observaciones);
+            return $this->actualizarEstadoPedido($id, 'Completado');
 
         } catch (Exception $e) {
             return [
@@ -339,221 +362,98 @@ class PedidoService
     }
 
     /**
-     * Obtener pedidos próximos a vencer
+     * Eliminar pedido
      */
-    public function obtenerPedidosProximosVencer(int $dias = 3): array
+    public function eliminarPedido(int $id): array
     {
         try {
-            $fechaLimite = new \DateTime();
-            $fechaLimite->add(new \DateInterval("P{$dias}D"));
-            
-            $pedidos = $this->pedidoRepository->obtenerProximosVencer($fechaLimite);
-            
+            $resultado = $this->pedidoRepository->delete($id);
+
+            if ($resultado) {
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Pedido eliminado exitosamente',
+                    'datos' => null
+                ];
+            }
+
             return [
-                'exito' => true,
-                'mensaje' => 'Pedidos próximos a vencer obtenidos',
-                'datos' => array_map([$this, 'formatearPedido'], $pedidos)
+                'exito' => false,
+                'mensaje' => 'No se pudo eliminar el pedido',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al obtener pedidos próximos a vencer: ' . $e->getMessage(),
-                'datos' => []
-            ];
-        }
-    }
-
-    /**
-     * Obtener estadísticas de pedidos
-     */
-    public function obtenerEstadisticasPedidos(array $filtros = []): array
-    {
-        try {
-            $estadisticas = [
-                'total_pedidos' => $this->pedidoRepository->contarPedidos($filtros),
-                'pedidos_pendientes' => $this->pedidoRepository->contarPorEstado('PENDIENTE', $filtros),
-                'pedidos_en_proceso' => $this->pedidoRepository->contarPorEstado('EN_PROCESO', $filtros),
-                'pedidos_completados' => $this->pedidoRepository->contarPorEstado('COMPLETADO', $filtros),
-                'pedidos_cancelados' => $this->pedidoRepository->contarPorEstado('CANCELADO', $filtros),
-                'monto_total_pedidos' => $this->pedidoRepository->calcularMontoTotal($filtros),
-                'promedio_dias_entrega' => $this->pedidoRepository->calcularPromedioDiasEntrega($filtros),
-                'pedidos_por_mes' => $this->pedidoRepository->obtenerPedidosPorMes($filtros)
-            ];
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Estadísticas obtenidas exitosamente',
-                'datos' => $estadisticas
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener estadísticas: ' . $e->getMessage(),
+                'mensaje' => 'Error al eliminar pedido: ' . $e->getMessage(),
                 'datos' => null
             ];
         }
-    }
-
-    /**
-     * Validar productos del pedido
-     */
-    private function validarProductosPedido(array $productos): array
-    {
-        if (empty($productos)) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Debe agregar al menos un producto',
-                'datos' => null
-            ];
-        }
-
-        foreach ($productos as $item) {
-            $producto = $this->productoRepository->obtenerPorId($item['producto_id']);
-            
-            if (!$producto) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Producto no encontrado: ID ' . $item['producto_id'],
-                    'datos' => null
-                ];
-            }
-
-            if ($producto->getEstado() !== 'ACTIVO') {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Producto inactivo: ' . $producto->getNombre(),
-                    'datos' => null
-                ];
-            }
-        }
-
-        return ['exito' => true];
-    }
-
-    /**
-     * Calcular totales del pedido
-     */
-    private function calcularTotalesPedido(array $productos): array
-    {
-        $subtotal = 0;
-
-        foreach ($productos as $item) {
-            $producto = $this->productoRepository->obtenerPorId($item['producto_id']);
-            $precioUnitario = $item['precio_unitario'] ?? $producto->getPrecio();
-            $subtotal += $precioUnitario * $item['cantidad'];
-        }
-
-        $impuesto = $subtotal * 0.19; // 19% IVA por defecto
-        $total = $subtotal + $impuesto;
-
-        return [
-            'subtotal' => $subtotal,
-            'impuesto' => $impuesto,
-            'total' => $total
-        ];
     }
 
     /**
      * Crear detalle de pedido
      */
-    private function crearDetallePedido(int $pedidoId, array $itemProducto): DetallePedidoEntity
+    private function crearDetallePedido(int $pedidoId, array $itemProducto): ?DetallePedidoEntity
     {
-        $producto = $this->productoRepository->obtenerPorId($itemProducto['producto_id']);
-        
-        $detalle = new DetallePedidoEntity();
-        $detalle->setPedidoId($pedidoId);
-        $detalle->setProductoId($itemProducto['producto_id']);
-        $detalle->setCantidad($itemProducto['cantidad']);
-        $detalle->setPrecioUnitario($itemProducto['precio_unitario'] ?? $producto->getPrecio());
-        $detalle->setSubtotal($detalle->getPrecioUnitario() * $detalle->getCantidad());
+        try {
+            $producto = $this->productoRepository->findById($itemProducto['idProducto']);
+            
+            if (!$producto) {
+                return null;
+            }
 
-        return $this->detallePedidoRepository->crear($detalle);
+            $detalle = new DetallePedidoEntity();
+            $detalle->setIdPedido($pedidoId);
+            $detalle->setIdProducto($itemProducto['idProducto']);
+            $detalle->setCantidadProducto($itemProducto['cantidadProducto']);
+            $detalle->setDiseno($itemProducto['diseno'] ?? '');
+
+            return $this->detallePedidoRepository->create($detalle);
+        } catch (Exception $e) {
+            error_log("Error creating detalle pedido: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
      * Crear detalle de uniforme
      */
-    private function crearDetalleUniforme(int $detallePedidoId, array $uniforme): DetalleUniformeEntity
+    private function crearDetalleUniforme(int $detallePedidoId, array $uniforme): ?DetalleUniformeEntity
     {
-        $detalleUniforme = new DetalleUniformeEntity();
-        $detalleUniforme->setDetallePedidoId($detallePedidoId);
-        $detalleUniforme->setTalla($uniforme['talla']);
-        $detalleUniforme->setGenero($uniforme['genero'] ?? 'UNISEX');
-        $detalleUniforme->setNumero($uniforme['numero'] ?? null);
-        $detalleUniforme->setNombreJugador($uniforme['nombre_jugador'] ?? '');
-        $detalleUniforme->setColorPrimario($uniforme['color_primario'] ?? '');
-        $detalleUniforme->setColorSecundario($uniforme['color_secundario'] ?? '');
-        $detalleUniforme->setObservaciones($uniforme['observaciones'] ?? '');
+        try {
+            $detalleUniforme = new DetalleUniformeEntity();
+            $detalleUniforme->setIdDetallePedido($detallePedidoId);
+            $detalleUniforme->setTalla($uniforme['talla']);
+            $detalleUniforme->setGenero($uniforme['genero'] ?? 'Masculino');
+            $detalleUniforme->setNumeroCamisola($uniforme['numeroCamisola'] ?? null);
 
-        return $this->detalleUniformeRepository->crear($detalleUniforme);
+            return $this->detalleUniformeRepository->create($detalleUniforme);
+        } catch (Exception $e) {
+            error_log("Error creating detalle uniforme: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
-     * Formatear pedido con información completa
+     * Validar datos de pedido
      */
-    private function formatearPedido(PedidoEntity $pedido): array
+    public function validarDatosPedido(array $datos): array
     {
-        $datos = $pedido->toArray();
-        
-        // Agregar información del cliente
-        try {
-            $cliente = $this->clienteRepository->obtenerPorId($pedido->getClienteId());
-            if ($cliente) {
-                $datos['cliente'] = [
-                    'id' => $cliente->getId(),
-                    'nombre' => $cliente->getNombre() . ' ' . $cliente->getApellido(),
-                    'documento' => $cliente->getDocumento(),
-                    'telefono' => $cliente->getTelefono(),
-                    'email' => $cliente->getEmail()
-                ];
-            }
-        } catch (Exception $e) {
-            $datos['cliente'] = null;
+        $errores = [];
+
+        if (empty($datos['idCliente']) || $datos['idCliente'] <= 0) {
+            $errores[] = 'El cliente es requerido';
         }
 
-        // Agregar detalles del pedido
-        try {
-            $detalles = $this->detallePedidoRepository->obtenerPorPedido($pedido->getId());
-            $datos['detalles'] = [];
-            
-            foreach ($detalles as $detalle) {
-                $detalleArray = $detalle->toArray();
-                
-                // Agregar información del producto
-                $producto = $this->productoRepository->obtenerPorId($detalle->getProductoId());
-                if ($producto) {
-                    $detalleArray['producto'] = [
-                        'id' => $producto->getId(),
-                        'nombre' => $producto->getNombre(),
-                        'codigo' => $producto->getCodigo(),
-                        'marca' => $producto->getMarca(),
-                        'color' => $producto->getColor(),
-                        'tipo' => $producto->getTipo()
-                    ];
-                }
-                
-                // Agregar detalles de uniformes si los tiene
-                try {
-                    $uniformes = $this->detalleUniformeRepository->obtenerPorDetallePedido($detalle->getId());
-                    $detalleArray['uniformes'] = array_map(fn($u) => $u->toArray(), $uniformes);
-                } catch (Exception $e) {
-                    $detalleArray['uniformes'] = [];
-                }
-                
-                $datos['detalles'][] = $detalleArray;
-            }
-        } catch (Exception $e) {
-            $datos['detalles'] = [];
+        if (empty($datos['productos']) || !is_array($datos['productos'])) {
+            $errores[] = 'Debe agregar al menos un producto';
         }
 
-        // Calcular días para entrega
-        $fechaEntrega = $pedido->getFechaEntrega();
-        $hoy = new \DateTime();
-        $diasParaEntrega = $hoy->diff($fechaEntrega)->days;
-        $datos['dias_para_entrega'] = $fechaEntrega < $hoy ? -$diasParaEntrega : $diasParaEntrega;
-
-        return $datos;
+        return [
+            'valido' => empty($errores),
+            'errores' => $errores
+        ];
     }
 }

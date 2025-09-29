@@ -11,11 +11,23 @@ ini_set('display_errors', 1);
 // Autoload y configuración
 require_once __DIR__ . '/../conf/database.php';
 
-// Incluir manualmente las clases necesarias
-require_once __DIR__ . '/../src/entities/ProductoEntity.php';
-require_once __DIR__ . '/../src/repositories/ProductoRepository.php';
-require_once __DIR__ . '/../src/repositories/CategoriaRepository.php';
-require_once __DIR__ . '/../src/services/ProductoService.php';
+// Incluir manualmente las clases necesarias con namespaces
+require_once __DIR__ . '/../src/Entities/ProductoEntity.php';
+require_once __DIR__ . '/../src/Entities/CategoriaEntity.php';
+require_once __DIR__ . '/../src/Repositories/ProductoRepository.php';
+require_once __DIR__ . '/../src/Repositories/CategoriaRepository.php';
+require_once __DIR__ . '/../src/Services/ProductoService.php';
+require_once __DIR__ . '/../src/Infraestructura/ConnectionManager.php';
+require_once __DIR__ . '/../src/Infraestructura/DatabaseFactory.php';
+
+// Imports con namespace
+use App\Entities\ProductoEntity;
+use App\Entities\CategoriaEntity;
+use App\Repositories\ProductoRepository;
+use App\Repositories\CategoriaRepository;
+use App\Services\ProductoService;
+use App\Infraestructura\ConnectionManager;
+use App\Infraestructura\DatabaseFactory;
 
 // Headers HTTP
 class HttpHeaders 
@@ -25,7 +37,7 @@ class HttpHeaders
         header('Access-Control-Allow-Origin: *');
         header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
         header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-        header('Content-Type: application/json');
+        header('Content-Type: application/json; charset=utf-8');
         
         if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
             http_response_code(200);
@@ -42,7 +54,7 @@ class ResponseHandler
     public function enviarRespuesta(array $data, int $codigo = 200): void 
     {
         http_response_code($codigo);
-        echo json_encode($data);
+        echo json_encode($data, JSON_UNESCAPED_UNICODE);
         exit();
     }
     
@@ -114,30 +126,26 @@ class RequestHandler
  */
 class ServiceFactory 
 {
-    private $database;
+    private ConnectionManager $connectionManager;
     private array $repositories = [];
     private array $services = [];
     
     public function __construct() 
     {
-        $this->database = new Database();
-    }
-    
-    private function obtenerConexion() 
-    {
-        return $this->database->getConnection();
+        // Crear ConnectionManager usando DatabaseFactory
+        $database = DatabaseFactory::getInstance();
+        $this->connectionManager = new ConnectionManager($database);
     }
     
     public function crearRepository(string $nombre): object 
     {
         if (!isset($this->repositories[$nombre])) {
-            // Usar los nombres exactos de tus clases
             switch($nombre) {
                 case 'Producto':
-                    $this->repositories[$nombre] = new ProductoRepository($this->obtenerConexion());
+                    $this->repositories[$nombre] = new ProductoRepository($this->connectionManager);
                     break;
                 case 'Categoria':
-                    $this->repositories[$nombre] = new CategoriaRepository($this->obtenerConexion());
+                    $this->repositories[$nombre] = new CategoriaRepository($this->connectionManager);
                     break;
                 default:
                     throw new Exception("Repository {$nombre} no encontrado");
@@ -201,7 +209,7 @@ abstract class BaseController
  */
 class ProductoController extends BaseController 
 {
-    private $productoService;
+    private ProductoService $productoService;
     
     public function __construct(
         RequestHandler $requestHandler, 
@@ -266,16 +274,12 @@ class ProductoController extends BaseController
             $resultado = $this->productoService->obtenerProductosStockBajo();
             $this->responseHandler->enviarRespuesta($resultado);
             
-        } elseif (isset($parametros['catalogo'])) {
-            $resultado = $this->productoService->obtenerCatalogo($parametros);
-            $this->responseHandler->enviarRespuesta($resultado);
-            
-        } elseif (isset($parametros['estadisticas'])) {
-            $resultado = $this->productoService->obtenerEstadisticasProductos();
+        } elseif (isset($parametros['activos'])) {
+            $resultado = $this->productoService->listarProductosActivos();
             $this->responseHandler->enviarRespuesta($resultado);
             
         } else {
-            $resultado = $this->productoService->listarProductos($parametros);
+            $resultado = $this->productoService->listarProductos();
             $this->responseHandler->enviarRespuesta($resultado);
         }
     }
@@ -304,15 +308,20 @@ class ProductoController extends BaseController
     
     private function manejarPatch(?string $id, ?string $accion): void 
     {
+        $idValidado = $this->validarId($id);
+        $datos = $this->requestHandler->obtenerDatos();
+        
         if ($accion === 'stock') {
-            $idValidado = $this->validarId($id);
-            $datos = $this->requestHandler->obtenerDatos();
             $resultado = $this->productoService->actualizarStock(
                 $idValidado,
-                $datos['cantidad'] ?? 0,
-                $datos['operacion'] ?? 'SET'
+                $datos['cantidad'] ?? 0
             );
             $this->responseHandler->enviarRespuesta($resultado);
+            
+        } elseif ($accion === 'activar') {
+            $resultado = $this->productoService->activarProducto($idValidado);
+            $this->responseHandler->enviarRespuesta($resultado);
+            
         } else {
             $this->responseHandler->error('Acción no válida para PATCH');
         }
@@ -353,7 +362,6 @@ class Router
                 $this->responseHandler,
                 $this->serviceFactory
             )
-            // Solo ProductoController por ahora para testing
         ];
     }
     
@@ -366,7 +374,12 @@ class Router
             $recurso = $ruta['recurso'];
             
             if (empty($recurso)) {
-                $this->responseHandler->error('Recurso no especificado');
+                $this->responseHandler->enviarRespuesta([
+                    'exito' => true,
+                    'mensaje' => 'API funcionando correctamente',
+                    'version' => '1.0',
+                    'recursos_disponibles' => ['productos']
+                ]);
             }
             
             if (!isset($this->controllers[$recurso])) {
@@ -387,4 +400,3 @@ class Router
 // ============= PUNTO DE ENTRADA =============
 $router = new Router();
 $router->procesar();
-?>

@@ -14,7 +14,7 @@ class ConnectionManager
     private DatabaseInterface $database;
     private bool $autoCommit = true;
 
-    public function __construct(DatabaseInterface $database = null)
+    public function __construct(?DatabaseInterface $database = null)
     {
         $this->database = $database ?? DatabaseFactory::getInstance();
     }

@@ -1,14 +1,14 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\VentaEntity;
-use Proyecto\Entities\DetalleVentaEntity;
-use Proyecto\Repositories\VentaRepository;
-use Proyecto\Repositories\DetalleVentaRepository;
-use Proyecto\Repositories\ClienteRepository;
-use Proyecto\Repositories\ProductoRepository;
-use Proyecto\Services\ProductoService;
+use App\Entities\VentaEntity;
+use App\Entities\DetalleVentaEntity;
+use App\Repositories\VentaRepository;
+use App\Repositories\DetalleVentaRepository;
+use App\Repositories\ClienteRepository;
+use App\Repositories\ProductoRepository;
+use App\Services\ProductoService;
 use Exception;
 
 /**
@@ -21,20 +21,17 @@ class VentaService
     private DetalleVentaRepository $detalleVentaRepository;
     private ClienteRepository $clienteRepository;
     private ProductoRepository $productoRepository;
-    private ProductoService $productoService;
 
     public function __construct(
         VentaRepository $ventaRepository,
         DetalleVentaRepository $detalleVentaRepository,
         ClienteRepository $clienteRepository,
-        ProductoRepository $productoRepository,
-        ProductoService $productoService
+        ProductoRepository $productoRepository
     ) {
         $this->ventaRepository = $ventaRepository;
         $this->detalleVentaRepository = $detalleVentaRepository;
         $this->clienteRepository = $clienteRepository;
         $this->productoRepository = $productoRepository;
-        $this->productoService = $productoService;
     }
 
     /**
@@ -44,11 +41,20 @@ class VentaService
     {
         try {
             // Validar cliente
-            $cliente = $this->clienteRepository->obtenerPorId($datosVenta['cliente_id']);
+            $cliente = $this->clienteRepository->findById($datosVenta['idCliente']);
             if (!$cliente) {
                 return [
                     'exito' => false,
                     'mensaje' => 'Cliente no encontrado',
+                    'datos' => null
+                ];
+            }
+
+            // Validar que haya productos
+            if (empty($datosVenta['productos'])) {
+                return [
+                    'exito' => false,
+                    'mensaje' => 'Debe agregar al menos un producto',
                     'datos' => null
                 ];
             }
@@ -64,46 +70,39 @@ class VentaService
 
             // Crear venta
             $venta = new VentaEntity();
-            $venta->setClienteId($datosVenta['cliente_id']);
-            $venta->setFecha(new \DateTime($datosVenta['fecha'] ?? 'now'));
-            $venta->setSubtotal($totales['subtotal']);
-            $venta->setImpuesto($totales['impuesto']);
+            $venta->setIdCliente($datosVenta['idCliente']);
+            $venta->setIdUsuario($datosVenta['idUsuario']);
+            $venta->setFechaRegistro(new \DateTime());
             $venta->setTotal($totales['total']);
-            $venta->setDescuento($datosVenta['descuento'] ?? 0);
-            $venta->setMetodoPago($datosVenta['metodo_pago'] ?? 'EFECTIVO');
-            $venta->setObservaciones($datosVenta['observaciones'] ?? '');
-            $venta->setEstado($datosVenta['estado'] ?? 'COMPLETADA');
+            $venta->setImpuestosTotal($totales['impuestos']);
 
-            // Iniciar transacción
-            $this->ventaRepository->iniciarTransaccion();
+            $ventaCreada = $this->ventaRepository->create($venta);
 
-            try {
-                $ventaCreada = $this->ventaRepository->crear($venta);
-
-                // Crear detalles de venta
-                foreach ($datosVenta['productos'] as $itemProducto) {
-                    $this->crearDetalleVenta($ventaCreada->getId(), $itemProducto);
-                    
-                    // Actualizar stock del producto
-                    $this->productoService->actualizarStock(
-                        $itemProducto['producto_id'],
-                        $itemProducto['cantidad'],
-                        'SUBTRACT'
-                    );
-                }
-
-                $this->ventaRepository->confirmarTransaccion();
-
+            if (!$ventaCreada) {
                 return [
-                    'exito' => true,
-                    'mensaje' => 'Venta creada exitosamente',
-                    'datos' => $this->formatearVenta($ventaCreada)
+                    'exito' => false,
+                    'mensaje' => 'Error al crear la venta',
+                    'datos' => null
                 ];
-
-            } catch (Exception $e) {
-                $this->ventaRepository->revertirTransaccion();
-                throw $e;
             }
+
+            // Crear detalles de venta
+            $detallesCreados = [];
+            foreach ($datosVenta['productos'] as $itemProducto) {
+                $detalle = $this->crearDetalleVenta($ventaCreada->getIdVenta(), $itemProducto);
+                if ($detalle) {
+                    $detallesCreados[] = $detalle;
+                }
+            }
+
+            return [
+                'exito' => true,
+                'mensaje' => 'Venta creada exitosamente',
+                'datos' => [
+                    'venta' => $ventaCreada->toArray(),
+                    'detalles' => array_map(fn($d) => $d->toArray(), $detallesCreados)
+                ]
+            ];
 
         } catch (Exception $e) {
             return [
@@ -120,7 +119,7 @@ class VentaService
     public function obtenerVentaPorId(int $id): array
     {
         try {
-            $venta = $this->ventaRepository->obtenerPorId($id);
+            $venta = $this->ventaRepository->findById($id);
 
             if (!$venta) {
                 return [
@@ -146,17 +145,17 @@ class VentaService
     }
 
     /**
-     * Listar ventas con filtros
+     * Listar todas las ventas
      */
-    public function listarVentas(array $filtros = []): array
+    public function listarVentas(): array
     {
         try {
-            $ventas = $this->ventaRepository->listarConFiltros($filtros);
+            $ventas = $this->ventaRepository->findAll();
             
             return [
                 'exito' => true,
                 'mensaje' => 'Ventas obtenidas exitosamente',
-                'datos' => array_map([$this, 'formatearVenta'], $ventas)
+                'datos' => array_map(fn($v) => $v->toArray(), $ventas)
             ];
 
         } catch (Exception $e) {
@@ -174,7 +173,7 @@ class VentaService
     public function obtenerVentasPorCliente(int $clienteId): array
     {
         try {
-            $cliente = $this->clienteRepository->obtenerPorId($clienteId);
+            $cliente = $this->clienteRepository->findById($clienteId);
             if (!$cliente) {
                 return [
                     'exito' => false,
@@ -183,12 +182,12 @@ class VentaService
                 ];
             }
 
-            $ventas = $this->ventaRepository->obtenerPorCliente($clienteId);
+            $ventas = $this->ventaRepository->findByClient($clienteId);
             
             return [
                 'exito' => true,
                 'mensaje' => 'Ventas del cliente obtenidas',
-                'datos' => array_map([$this, 'formatearVenta'], $ventas)
+                'datos' => array_map(fn($v) => $v->toArray(), $ventas)
             ];
 
         } catch (Exception $e) {
@@ -201,35 +200,81 @@ class VentaService
     }
 
     /**
-     * Obtener ventas por rango de fechas
+     * Obtener ventas por usuario
      */
-    public function obtenerVentasPorFechas(\DateTime $fechaInicio, \DateTime $fechaFin): array
+    public function obtenerVentasPorUsuario(int $usuarioId): array
     {
         try {
-            $ventas = $this->ventaRepository->obtenerPorRangoFechas($fechaInicio, $fechaFin);
+            $ventas = $this->ventaRepository->findByUser($usuarioId);
             
             return [
                 'exito' => true,
-                'mensaje' => 'Ventas por fechas obtenidas',
-                'datos' => array_map([$this, 'formatearVenta'], $ventas)
+                'mensaje' => 'Ventas del usuario obtenidas',
+                'datos' => array_map(fn($v) => $v->toArray(), $ventas)
             ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al obtener ventas por fechas: ' . $e->getMessage(),
+                'mensaje' => 'Error al obtener ventas del usuario: ' . $e->getMessage(),
                 'datos' => []
             ];
         }
     }
 
     /**
-     * Anular venta
+     * Obtener ventas por fecha
      */
-    public function anularVenta(int $id, string $motivo = ''): array
+    public function obtenerVentasPorFecha(string $fecha): array
     {
         try {
-            $venta = $this->ventaRepository->obtenerPorId($id);
+            $ventas = $this->ventaRepository->findByDate($fecha);
+            
+            return [
+                'exito' => true,
+                'mensaje' => 'Ventas por fecha obtenidas',
+                'datos' => array_map(fn($v) => $v->toArray(), $ventas)
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al obtener ventas por fecha: ' . $e->getMessage(),
+                'datos' => []
+            ];
+        }
+    }
+
+    /**
+     * Obtener ventas por rango de fechas
+     */
+    public function obtenerVentasPorRangoFechas(string $fechaInicio, string $fechaFin): array
+    {
+        try {
+            $ventas = $this->ventaRepository->findByDateRange($fechaInicio, $fechaFin);
+            
+            return [
+                'exito' => true,
+                'mensaje' => 'Ventas por rango de fechas obtenidas',
+                'datos' => array_map(fn($v) => $v->toArray(), $ventas)
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al obtener ventas por rango de fechas: ' . $e->getMessage(),
+                'datos' => []
+            ];
+        }
+    }
+
+    /**
+     * Actualizar venta
+     */
+    public function actualizarVenta(int $id, array $datosVenta): array
+    {
+        try {
+            $venta = $this->ventaRepository->findById($id);
 
             if (!$venta) {
                 return [
@@ -239,51 +284,114 @@ class VentaService
                 ];
             }
 
-            if ($venta->getEstado() === 'ANULADA') {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'La venta ya está anulada',
-                    'datos' => null
-                ];
+            // Actualizar campos permitidos
+            if (isset($datosVenta['idCliente'])) {
+                $venta->setIdCliente($datosVenta['idCliente']);
+            }
+            if (isset($datosVenta['idUsuario'])) {
+                $venta->setIdUsuario($datosVenta['idUsuario']);
+            }
+            if (isset($datosVenta['total'])) {
+                $venta->setTotal($datosVenta['total']);
+            }
+            if (isset($datosVenta['impuestosTotal'])) {
+                $venta->setImpuestosTotal($datosVenta['impuestosTotal']);
             }
 
-            // Iniciar transacción
-            $this->ventaRepository->iniciarTransaccion();
+            $resultado = $this->ventaRepository->update($venta);
 
-            try {
-                // Devolver stock de los productos
-                $detalles = $this->detalleVentaRepository->obtenerPorVenta($id);
-                foreach ($detalles as $detalle) {
-                    $this->productoService->actualizarStock(
-                        $detalle->getProductoId(),
-                        $detalle->getCantidad(),
-                        'ADD'
-                    );
-                }
-
-                // Anular venta
-                $venta->setEstado('ANULADA');
-                $venta->setObservaciones($venta->getObservaciones() . ' | ANULADA: ' . $motivo);
-                $ventaActualizada = $this->ventaRepository->actualizar($venta);
-
-                $this->ventaRepository->confirmarTransaccion();
-
+            if ($resultado) {
+                $ventaActualizada = $this->ventaRepository->findById($id);
                 return [
                     'exito' => true,
-                    'mensaje' => 'Venta anulada exitosamente',
-                    'datos' => $this->formatearVenta($ventaActualizada)
+                    'mensaje' => 'Venta actualizada exitosamente',
+                    'datos' => $ventaActualizada->toArray()
                 ];
-
-            } catch (Exception $e) {
-                $this->ventaRepository->revertirTransaccion();
-                throw $e;
             }
+
+            return [
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar la venta',
+                'datos' => null
+            ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al anular venta: ' . $e->getMessage(),
+                'mensaje' => 'Error al actualizar venta: ' . $e->getMessage(),
                 'datos' => null
+            ];
+        }
+    }
+
+    /**
+     * Eliminar venta
+     */
+    public function eliminarVenta(int $id): array
+    {
+        try {
+            // Devolver stock de los productos antes de eliminar
+            $detalles = $this->detalleVentaRepository->findByVenta($id);
+            foreach ($detalles as $detalle) {
+                $this->productoRepository->increaseStock(
+                    $detalle->getIdProducto(), 
+                    $detalle->getCantidad()
+                );
+            }
+
+            $resultado = $this->ventaRepository->delete($id);
+
+            if ($resultado) {
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Venta eliminada exitosamente',
+                    'datos' => null
+                ];
+            }
+
+            return [
+                'exito' => false,
+                'mensaje' => 'No se pudo eliminar la venta',
+                'datos' => null
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al eliminar venta: ' . $e->getMessage(),
+                'datos' => null
+            ];
+        }
+    }
+
+    /**
+     * Obtener ventas del día
+     */
+    public function obtenerVentasDelDia(): array
+    {
+        try {
+            $ventas = $this->ventaRepository->getTodaySales();
+            
+            $totalVentas = count($ventas);
+            $totalMonto = array_sum(array_map(fn($v) => $v->getTotal(), $ventas));
+
+            return [
+                'exito' => true,
+                'mensaje' => 'Ventas del día obtenidas',
+                'datos' => [
+                    'ventas' => array_map(fn($v) => $v->toArray(), $ventas),
+                    'resumen' => [
+                        'total_ventas' => $totalVentas,
+                        'total_monto' => $totalMonto
+                    ]
+                ]
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al obtener ventas del día: ' . $e->getMessage(),
+                'datos' => []
             ];
         }
     }
@@ -291,19 +399,11 @@ class VentaService
     /**
      * Obtener estadísticas de ventas
      */
-    public function obtenerEstadisticasVentas(array $filtros = []): array
+    public function obtenerEstadisticasVentas(string $fechaInicio, string $fechaFin): array
     {
         try {
-            $estadisticas = [
-                'total_ventas' => $this->ventaRepository->contarVentas($filtros),
-                'monto_total' => $this->ventaRepository->calcularMontoTotal($filtros),
-                'venta_promedio' => $this->ventaRepository->calcularPromedioVentas($filtros),
-                'ventas_por_mes' => $this->ventaRepository->obtenerVentasPorMes($filtros),
-                'productos_mas_vendidos' => $this->detalleVentaRepository->obtenerProductosMasVendidos(10),
-                'clientes_frecuentes' => $this->ventaRepository->obtenerClientesFrecuentes(10),
-                'metodos_pago' => $this->ventaRepository->obtenerEstadisticasMetodosPago($filtros)
-            ];
-
+            $estadisticas = $this->ventaRepository->getSalesStats($fechaInicio, $fechaFin);
+            
             return [
                 'exito' => true,
                 'mensaje' => 'Estadísticas obtenidas exitosamente',
@@ -320,39 +420,24 @@ class VentaService
     }
 
     /**
-     * Generar reporte de ventas
+     * Obtener reporte de ventas por usuario
      */
-    public function generarReporteVentas(array $filtros = []): array
+    public function obtenerReporteVentasPorUsuario(string $fechaInicio, string $fechaFin): array
     {
         try {
-            $ventas = $this->ventaRepository->listarConFiltros($filtros);
+            $reporte = $this->ventaRepository->getSalesReportByUser($fechaInicio, $fechaFin);
             
-            $reporte = [
-                'periodo' => [
-                    'fecha_inicio' => $filtros['fecha_inicio'] ?? null,
-                    'fecha_fin' => $filtros['fecha_fin'] ?? null
-                ],
-                'resumen' => [
-                    'total_ventas' => count($ventas),
-                    'monto_total' => array_sum(array_map(fn($v) => $v->getTotal(), $ventas)),
-                    'subtotal' => array_sum(array_map(fn($v) => $v->getSubtotal(), $ventas)),
-                    'impuestos' => array_sum(array_map(fn($v) => $v->getImpuesto(), $ventas)),
-                    'descuentos' => array_sum(array_map(fn($v) => $v->getDescuento(), $ventas))
-                ],
-                'ventas' => array_map([$this, 'formatearVenta'], $ventas)
-            ];
-
             return [
                 'exito' => true,
-                'mensaje' => 'Reporte generado exitosamente',
+                'mensaje' => 'Reporte obtenido exitosamente',
                 'datos' => $reporte
             ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al generar reporte: ' . $e->getMessage(),
-                'datos' => null
+                'mensaje' => 'Error al obtener reporte: ' . $e->getMessage(),
+                'datos' => []
             ];
         }
     }
@@ -362,26 +447,18 @@ class VentaService
      */
     private function validarProductosVenta(array $productos): array
     {
-        if (empty($productos)) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Debe agregar al menos un producto',
-                'datos' => null
-            ];
-        }
-
         foreach ($productos as $item) {
-            $producto = $this->productoRepository->obtenerPorId($item['producto_id']);
+            $producto = $this->productoRepository->findById($item['idProducto']);
             
             if (!$producto) {
                 return [
                     'exito' => false,
-                    'mensaje' => 'Producto no encontrado: ID ' . $item['producto_id'],
+                    'mensaje' => 'Producto no encontrado: ID ' . $item['idProducto'],
                     'datos' => null
                 ];
             }
 
-            if ($producto->getEstado() !== 'ACTIVO') {
+            if (!$producto->getEsActivo()) {
                 return [
                     'exito' => false,
                     'mensaje' => 'Producto inactivo: ' . $producto->getNombre(),
@@ -409,17 +486,17 @@ class VentaService
         $subtotal = 0;
 
         foreach ($productos as $item) {
-            $producto = $this->productoRepository->obtenerPorId($item['producto_id']);
-            $precioUnitario = $item['precio_unitario'] ?? $producto->getPrecio();
+            $producto = $this->productoRepository->findById($item['idProducto']);
+            $precioUnitario = $producto->getPrecioUnitario();
             $subtotal += $precioUnitario * $item['cantidad'];
         }
 
-        $impuesto = $subtotal * 0.19; // 19% IVA por defecto
-        $total = $subtotal + $impuesto;
+        $impuestos = $subtotal * 0.12; // 12% IVA
+        $total = $subtotal + $impuestos;
 
         return [
             'subtotal' => $subtotal,
-            'impuesto' => $impuesto,
+            'impuestos' => $impuestos,
             'total' => $total
         ];
     }
@@ -427,18 +504,39 @@ class VentaService
     /**
      * Crear detalle de venta
      */
-    private function crearDetalleVenta(int $ventaId, array $itemProducto): DetalleVentaEntity
+    private function crearDetalleVenta(int $ventaId, array $itemProducto): ?DetalleVentaEntity
     {
-        $producto = $this->productoRepository->obtenerPorId($itemProducto['producto_id']);
-        
-        $detalle = new DetalleVentaEntity();
-        $detalle->setVentaId($ventaId);
-        $detalle->setProductoId($itemProducto['producto_id']);
-        $detalle->setCantidad($itemProducto['cantidad']);
-        $detalle->setPrecioUnitario($itemProducto['precio_unitario'] ?? $producto->getPrecio());
-        $detalle->setSubtotal($detalle->getPrecioUnitario() * $detalle->getCantidad());
+        try {
+            $producto = $this->productoRepository->findById($itemProducto['idProducto']);
+            
+            if (!$producto) {
+                return null;
+            }
 
-        return $this->detalleVentaRepository->crear($detalle);
+            $detalle = new DetalleVentaEntity();
+            $detalle->setIdVenta($ventaId);
+            $detalle->setIdProducto($itemProducto['idProducto']);
+            $detalle->setCantidad($itemProducto['cantidad']);
+            
+            // Calcular subtotal
+            $subtotal = $producto->getPrecioUnitario() * $itemProducto['cantidad'];
+            $detalle->setSubTotal($subtotal);
+
+            $detalleCreado = $this->detalleVentaRepository->create($detalle);
+
+            // Reducir stock
+            if ($detalleCreado) {
+                $this->productoRepository->reduceStock(
+                    $itemProducto['idProducto'], 
+                    $itemProducto['cantidad']
+                );
+            }
+
+            return $detalleCreado;
+        } catch (Exception $e) {
+            error_log("Error creating detalle venta: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
@@ -450,12 +548,11 @@ class VentaService
         
         // Agregar información del cliente
         try {
-            $cliente = $this->clienteRepository->obtenerPorId($venta->getClienteId());
+            $cliente = $this->clienteRepository->findById($venta->getIdCliente());
             if ($cliente) {
                 $datos['cliente'] = [
-                    'id' => $cliente->getId(),
-                    'nombre' => $cliente->getNombre() . ' ' . $cliente->getApellido(),
-                    'documento' => $cliente->getDocumento(),
+                    'id' => $cliente->getIdCliente(),
+                    'nombre_completo' => $cliente->getPrimerNombre() . ' ' . $cliente->getPrimerApellido(),
                     'telefono' => $cliente->getTelefono()
                 ];
             }
@@ -465,30 +562,37 @@ class VentaService
 
         // Agregar detalles de la venta
         try {
-            $detalles = $this->detalleVentaRepository->obtenerPorVenta($venta->getId());
-            $datos['detalles'] = [];
-            
-            foreach ($detalles as $detalle) {
-                $detalleArray = $detalle->toArray();
-                
-                // Agregar información del producto
-                $producto = $this->productoRepository->obtenerPorId($detalle->getProductoId());
-                if ($producto) {
-                    $detalleArray['producto'] = [
-                        'id' => $producto->getId(),
-                        'nombre' => $producto->getNombre(),
-                        'codigo' => $producto->getCodigo(),
-                        'marca' => $producto->getMarca(),
-                        'color' => $producto->getColor()
-                    ];
-                }
-                
-                $datos['detalles'][] = $detalleArray;
-            }
+            $detalles = $this->detalleVentaRepository->findByVenta($venta->getIdVenta());
+            $datos['detalles'] = array_map(fn($d) => $d->toArray(), $detalles);
         } catch (Exception $e) {
             $datos['detalles'] = [];
         }
 
         return $datos;
+    }
+
+    /**
+     * Validar datos de venta
+     */
+    public function validarDatosVenta(array $datos): array
+    {
+        $errores = [];
+
+        if (empty($datos['idCliente']) || $datos['idCliente'] <= 0) {
+            $errores[] = 'El cliente es requerido';
+        }
+
+        if (empty($datos['idUsuario']) || $datos['idUsuario'] <= 0) {
+            $errores[] = 'El usuario es requerido';
+        }
+
+        if (empty($datos['productos']) || !is_array($datos['productos'])) {
+            $errores[] = 'Debe agregar al menos un producto';
+        }
+
+        return [
+            'valido' => empty($errores),
+            'errores' => $errores
+        ];
     }
 }

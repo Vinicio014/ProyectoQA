@@ -22,20 +22,15 @@ class VentaRepository
     public function create(VentaEntity $venta): ?VentaEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (cliente_id, usuario_id, fecha_venta, subtotal, 
-                    impuesto, total) 
-                    VALUES (:cliente_id, :usuario_id, :fecha_venta, :subtotal, :impuesto, :total)";
-            
-            $params = [
-                'cliente_id' => $venta->getClienteId(),
-                'usuario_id' => $venta->getUsuarioId(),
-                'fecha_venta' => $venta->getFechaVenta(),
-                'subtotal' => $venta->getSubtotal(),
-                'impuesto' => $venta->getImpuesto(),
-                'total' => $venta->getTotal()
+            $data = [
+                'idCliente' => $venta->getIdCliente(),
+                'idUsuario' => $venta->getIdUsuario(),
+                'Total' => $venta->getTotal(),
+                'impuestosTotal' => $venta->getImpuestosTotal()
+                // fechaRegistro se genera automáticamente con DEFAULT CURRENT_TIMESTAMP
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -54,13 +49,15 @@ class VentaRepository
     public function findById(int $id): ?VentaEntity
     {
         try {
-            $sql = "SELECT v.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido,
-                           u.nombre as usuario_nombre, u.apellido as usuario_apellido
+            $sql = "SELECT v.idVenta, v.fechaRegistro, v.idCliente, v.idUsuario, 
+                           v.Total, v.impuestosTotal,
+                           CONCAT(c.primer_nombre, ' ', c.primer_apellido) as cliente_nombre,
+                           u.nombre as usuario_nombre
                     FROM {$this->table} v 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id 
-                    LEFT JOIN usuario u ON v.usuario_id = u.id 
-                    WHERE v.id = :id";
+                    LEFT JOIN cliente c ON v.idCliente = c.idCliente 
+                    LEFT JOIN usuario u ON v.idUsuario = u.idUsuario 
+                    WHERE v.idVenta = :id";
+            
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -76,14 +73,16 @@ class VentaRepository
     public function findAll(): array
     {
         try {
-            $sql = "SELECT v.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido,
-                           u.nombre as usuario_nombre, u.apellido as usuario_apellido
+            $sql = "SELECT v.idVenta, v.fechaRegistro, v.idCliente, v.idUsuario, 
+                           v.Total, v.impuestosTotal,
+                           CONCAT(c.primer_nombre, ' ', c.primer_apellido) as cliente_nombre,
+                           u.nombre as usuario_nombre
                     FROM {$this->table} v 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id 
-                    LEFT JOIN usuario u ON v.usuario_id = u.id 
-                    ORDER BY v.fecha_venta DESC";
-            $results = $this->connectionManager->selectAll($sql);
+                    LEFT JOIN cliente c ON v.idCliente = c.idCliente 
+                    LEFT JOIN usuario u ON v.idUsuario = u.idUsuario 
+                    ORDER BY v.fechaRegistro DESC";
+            
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -98,15 +97,17 @@ class VentaRepository
     public function findByClient(int $clienteId): array
     {
         try {
-            $sql = "SELECT v.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido,
-                           u.nombre as usuario_nombre, u.apellido as usuario_apellido
+            $sql = "SELECT v.idVenta, v.fechaRegistro, v.idCliente, v.idUsuario, 
+                           v.Total, v.impuestosTotal,
+                           CONCAT(c.primer_nombre, ' ', c.primer_apellido) as cliente_nombre,
+                           u.nombre as usuario_nombre
                     FROM {$this->table} v 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id 
-                    LEFT JOIN usuario u ON v.usuario_id = u.id 
-                    WHERE v.cliente_id = :cliente_id
-                    ORDER BY v.fecha_venta DESC";
-            $results = $this->connectionManager->selectAll($sql, ['cliente_id' => $clienteId]);
+                    LEFT JOIN cliente c ON v.idCliente = c.idCliente 
+                    LEFT JOIN usuario u ON v.idUsuario = u.idUsuario 
+                    WHERE v.idCliente = :idCliente
+                    ORDER BY v.fechaRegistro DESC";
+            
+            $results = $this->connectionManager->select($sql, ['idCliente' => $clienteId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -121,15 +122,17 @@ class VentaRepository
     public function findByUser(int $usuarioId): array
     {
         try {
-            $sql = "SELECT v.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido,
-                           u.nombre as usuario_nombre, u.apellido as usuario_apellido
+            $sql = "SELECT v.idVenta, v.fechaRegistro, v.idCliente, v.idUsuario, 
+                           v.Total, v.impuestosTotal,
+                           CONCAT(c.primer_nombre, ' ', c.primer_apellido) as cliente_nombre,
+                           u.nombre as usuario_nombre
                     FROM {$this->table} v 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id 
-                    LEFT JOIN usuario u ON v.usuario_id = u.id 
-                    WHERE v.usuario_id = :usuario_id
-                    ORDER BY v.fecha_venta DESC";
-            $results = $this->connectionManager->selectAll($sql, ['usuario_id' => $usuarioId]);
+                    LEFT JOIN cliente c ON v.idCliente = c.idCliente 
+                    LEFT JOIN usuario u ON v.idUsuario = u.idUsuario 
+                    WHERE v.idUsuario = :idUsuario
+                    ORDER BY v.fechaRegistro DESC";
+            
+            $results = $this->connectionManager->select($sql, ['idUsuario' => $usuarioId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -144,15 +147,17 @@ class VentaRepository
     public function findByDate(string $fecha): array
     {
         try {
-            $sql = "SELECT v.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido,
-                           u.nombre as usuario_nombre, u.apellido as usuario_apellido
+            $sql = "SELECT v.idVenta, v.fechaRegistro, v.idCliente, v.idUsuario, 
+                           v.Total, v.impuestosTotal,
+                           CONCAT(c.primer_nombre, ' ', c.primer_apellido) as cliente_nombre,
+                           u.nombre as usuario_nombre
                     FROM {$this->table} v 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id 
-                    LEFT JOIN usuario u ON v.usuario_id = u.id 
-                    WHERE DATE(v.fecha_venta) = :fecha
-                    ORDER BY v.fecha_venta DESC";
-            $results = $this->connectionManager->selectAll($sql, ['fecha' => $fecha]);
+                    LEFT JOIN cliente c ON v.idCliente = c.idCliente 
+                    LEFT JOIN usuario u ON v.idUsuario = u.idUsuario 
+                    WHERE DATE(v.fechaRegistro) = :fecha
+                    ORDER BY v.fechaRegistro DESC";
+            
+            $results = $this->connectionManager->select($sql, ['fecha' => $fecha]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -167,17 +172,18 @@ class VentaRepository
     public function findByDateRange(string $fechaInicio, string $fechaFin): array
     {
         try {
-            $sql = "SELECT v.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido,
-                           u.nombre as usuario_nombre, u.apellido as usuario_apellido
+            $sql = "SELECT v.idVenta, v.fechaRegistro, v.idCliente, v.idUsuario, 
+                           v.Total, v.impuestosTotal,
+                           CONCAT(c.primer_nombre, ' ', c.primer_apellido) as cliente_nombre,
+                           u.nombre as usuario_nombre
                     FROM {$this->table} v 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id 
-                    LEFT JOIN usuario u ON v.usuario_id = u.id 
-                    WHERE DATE(v.fecha_venta) BETWEEN :fecha_inicio AND :fecha_fin
-                    ORDER BY v.fecha_venta DESC";
+                    LEFT JOIN cliente c ON v.idCliente = c.idCliente 
+                    LEFT JOIN usuario u ON v.idUsuario = u.idUsuario 
+                    WHERE DATE(v.fechaRegistro) BETWEEN :fecha_inicio AND :fecha_fin
+                    ORDER BY v.fechaRegistro DESC";
             
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
-            $results = $this->connectionManager->selectAll($sql, $params);
+            $results = $this->connectionManager->select($sql, $params);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -192,23 +198,17 @@ class VentaRepository
     public function update(VentaEntity $venta): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET cliente_id = :cliente_id, usuario_id = :usuario_id, 
-                        fecha_venta = :fecha_venta, subtotal = :subtotal, 
-                        impuesto = :impuesto, total = :total
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $venta->getId(),
-                'cliente_id' => $venta->getClienteId(),
-                'usuario_id' => $venta->getUsuarioId(),
-                'fecha_venta' => $venta->getFechaVenta(),
-                'subtotal' => $venta->getSubtotal(),
-                'impuesto' => $venta->getImpuesto(),
-                'total' => $venta->getTotal()
+            $data = [
+                'idCliente' => $venta->getIdCliente(),
+                'idUsuario' => $venta->getIdUsuario(),
+                'Total' => $venta->getTotal(),
+                'impuestosTotal' => $venta->getImpuestosTotal()
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idVenta = :id";
+            $whereParams = ['id' => $venta->getIdVenta()];
+
+            return $this->connectionManager->update($this->table, $data, $where, $whereParams);
         } catch (Exception $e) {
             error_log("Error updating venta: " . $e->getMessage());
             return false;
@@ -216,13 +216,15 @@ class VentaRepository
     }
 
     /**
-     * Eliminar venta
+     * Eliminar venta (hard delete)
      */
     public function delete(int $id): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE id = :id";
-            return $this->connectionManager->delete($sql, ['id' => $id]);
+            $where = "idVenta = :id";
+            $params = ['id' => $id];
+            
+            return $this->connectionManager->delete($this->table, $where, $params);
         } catch (Exception $e) {
             error_log("Error deleting venta: " . $e->getMessage());
             return false;
@@ -264,8 +266,10 @@ class VentaRepository
     public function getTotalSalesByDate(string $fecha): float
     {
         try {
-            $sql = "SELECT COALESCE(SUM(total), 0) as total FROM {$this->table} 
-                    WHERE DATE(fecha_venta) = :fecha";
+            $sql = "SELECT COALESCE(SUM(Total), 0) as total 
+                    FROM {$this->table} 
+                    WHERE DATE(fechaRegistro) = :fecha";
+            
             $result = $this->connectionManager->selectOne($sql, ['fecha' => $fecha]);
             
             return (float)($result['total'] ?? 0);
@@ -281,8 +285,9 @@ class VentaRepository
     public function getTotalSalesByDateRange(string $fechaInicio, string $fechaFin): float
     {
         try {
-            $sql = "SELECT COALESCE(SUM(total), 0) as total FROM {$this->table} 
-                    WHERE DATE(fecha_venta) BETWEEN :fecha_inicio AND :fecha_fin";
+            $sql = "SELECT COALESCE(SUM(Total), 0) as total 
+                    FROM {$this->table} 
+                    WHERE DATE(fechaRegistro) BETWEEN :fecha_inicio AND :fecha_fin";
             
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
             $result = $this->connectionManager->selectOne($sql, $params);
@@ -302,17 +307,25 @@ class VentaRepository
         try {
             $sql = "SELECT 
                         COUNT(*) as total_ventas,
-                        SUM(total) as total_ingresos,
-                        AVG(total) as promedio_venta,
-                        MIN(total) as venta_minima,
-                        MAX(total) as venta_maxima
+                        SUM(Total) as total_ingresos,
+                        AVG(Total) as promedio_venta,
+                        MIN(Total) as venta_minima,
+                        MAX(Total) as venta_maxima,
+                        SUM(impuestosTotal) as total_impuestos
                     FROM {$this->table} 
-                    WHERE DATE(fecha_venta) BETWEEN :fecha_inicio AND :fecha_fin";
+                    WHERE DATE(fechaRegistro) BETWEEN :fecha_inicio AND :fecha_fin";
                     
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
             $result = $this->connectionManager->selectOne($sql, $params);
             
-            return $result ?? [];
+            return [
+                'total_ventas' => (int)($result['total_ventas'] ?? 0),
+                'total_ingresos' => (float)($result['total_ingresos'] ?? 0),
+                'promedio_venta' => (float)($result['promedio_venta'] ?? 0),
+                'venta_minima' => (float)($result['venta_minima'] ?? 0),
+                'venta_maxima' => (float)($result['venta_maxima'] ?? 0),
+                'total_impuestos' => (float)($result['total_impuestos'] ?? 0)
+            ];
         } catch (Exception $e) {
             error_log("Error getting sales stats: " . $e->getMessage());
             return [];
@@ -326,17 +339,17 @@ class VentaRepository
     {
         try {
             $sql = "SELECT 
-                        u.id, u.nombre, u.apellido,
-                        COUNT(v.id) as total_ventas,
-                        SUM(v.total) as total_vendido
+                        u.idUsuario, u.nombre, u.correo,
+                        COUNT(v.idVenta) as total_ventas,
+                        COALESCE(SUM(v.Total), 0) as total_vendido
                     FROM usuario u
-                    LEFT JOIN {$this->table} v ON u.id = v.usuario_id 
-                        AND DATE(v.fecha_venta) BETWEEN :fecha_inicio AND :fecha_fin
-                    GROUP BY u.id
+                    LEFT JOIN {$this->table} v ON u.idUsuario = v.idUsuario 
+                        AND DATE(v.fechaRegistro) BETWEEN :fecha_inicio AND :fecha_fin
+                    GROUP BY u.idUsuario, u.nombre, u.correo
                     ORDER BY total_vendido DESC";
                     
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
-            $results = $this->connectionManager->selectAll($sql, $params);
+            $results = $this->connectionManager->select($sql, $params);
             
             return $results;
         } catch (Exception $e) {
@@ -346,18 +359,60 @@ class VentaRepository
     }
 
     /**
+     * Contar ventas por cliente
+     */
+    public function countByClient(int $clienteId): int
+    {
+        try {
+            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE idCliente = :idCliente";
+            $result = $this->connectionManager->selectOne($sql, ['idCliente' => $clienteId]);
+            
+            return (int)($result['count'] ?? 0);
+        } catch (Exception $e) {
+            error_log("Error counting ventas by client: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Obtener total de ventas de un cliente
+     */
+    public function getTotalByClient(int $clienteId): float
+    {
+        try {
+            $sql = "SELECT COALESCE(SUM(Total), 0) as total 
+                    FROM {$this->table} 
+                    WHERE idCliente = :idCliente";
+            
+            $result = $this->connectionManager->selectOne($sql, ['idCliente' => $clienteId]);
+            
+            return (float)($result['total'] ?? 0);
+        } catch (Exception $e) {
+            error_log("Error getting total by client: " . $e->getMessage());
+            return 0.0;
+        }
+    }
+
+    /**
      * Mapear datos de BD a entidad
      */
     private function mapToEntity(array $data): VentaEntity
     {
         $venta = new VentaEntity();
-        $venta->setId($data['id']);
-        $venta->setClienteId($data['cliente_id']);
-        $venta->setUsuarioId($data['usuario_id']);
-        $venta->setFechaVenta($data['fecha_venta']);
-        $venta->setSubtotal($data['subtotal']);
-        $venta->setImpuesto($data['impuesto']);
-        $venta->setTotal($data['total']);
+        $venta->setIdVenta((int)$data['idVenta']);
+        $venta->setIdCliente((int)$data['idCliente']);
+        $venta->setIdUsuario((int)$data['idUsuario']);
+        $venta->setTotal((float)$data['Total']);
+        $venta->setImpuestosTotal((float)$data['impuestosTotal']);
+        
+        // Manejo de DateTime
+        if (isset($data['fechaRegistro'])) {
+            try {
+                $venta->setFechaRegistro(new \DateTime($data['fechaRegistro']));
+            } catch (\Exception $e) {
+                $venta->setFechaRegistro(new \DateTime());
+            }
+        }
         
         return $venta;
     }

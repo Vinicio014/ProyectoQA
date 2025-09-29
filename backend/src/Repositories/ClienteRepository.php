@@ -22,23 +22,17 @@ class ClienteRepository
     public function create(ClienteEntity $cliente): ?ClienteEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (nombre, apellido, documento, tipo_documento, telefono, 
-                    email, direccion, activo, fecha_creacion) 
-                    VALUES (:nombre, :apellido, :documento, :tipo_documento, :telefono, 
-                    :email, :direccion, :activo, NOW())";
-            
-            $params = [
-                'nombre' => $cliente->getNombre(),
-                'apellido' => $cliente->getApellido(),
-                'documento' => $cliente->getDocumento(),
-                'tipo_documento' => $cliente->getTipoDocumento(),
-                'telefono' => $cliente->getTelefono(),
-                'email' => $cliente->getEmail(),
+            $data = [
+                'primer_nombre' => $cliente->getPrimerNombre(),
+                'segundo_nombre' => $cliente->getSegundoNombre(),
+                'primer_apellido' => $cliente->getPrimerApellido(),
+                'segundo_apellido' => $cliente->getSegundoApellido(),
+                'genero' => $cliente->getGenero(),
                 'direccion' => $cliente->getDireccion(),
-                'activo' => $cliente->isActivo() ? 1 : 0
+                'telefono' => $cliente->getTelefono()
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -57,7 +51,7 @@ class ClienteRepository
     public function findById(int $id): ?ClienteEntity
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE id = :id";
+            $sql = "SELECT * FROM {$this->table} WHERE idCliente = :id";
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -68,25 +62,9 @@ class ClienteRepository
     }
 
     /**
-     * Obtener cliente por documento
-     */
-    public function findByDocument(string $documento): ?ClienteEntity
-    {
-        try {
-            $sql = "SELECT * FROM {$this->table} WHERE documento = :documento";
-            $result = $this->connectionManager->selectOne($sql, ['documento' => $documento]);
-            
-            return $result ? $this->mapToEntity($result) : null;
-        } catch (Exception $e) {
-            error_log("Error finding cliente by document: " . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
      * Obtener cliente por teléfono
      */
-    public function findByPhone(string $telefono): ?ClienteEntity
+    public function findByPhone(int $telefono): ?ClienteEntity
     {
         try {
             $sql = "SELECT * FROM {$this->table} WHERE telefono = :telefono";
@@ -105,8 +83,8 @@ class ClienteRepository
     public function findAll(): array
     {
         try {
-            $sql = "SELECT * FROM {$this->table} ORDER BY nombre, apellido";
-            $results = $this->connectionManager->selectAll($sql);
+            $sql = "SELECT * FROM {$this->table} ORDER BY primer_nombre, primer_apellido";
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -122,13 +100,14 @@ class ClienteRepository
     {
         try {
             $sql = "SELECT * FROM {$this->table} 
-                    WHERE CONCAT(nombre, ' ', apellido) LIKE :name 
-                    OR nombre LIKE :name 
-                    OR apellido LIKE :name 
-                    ORDER BY nombre, apellido";
+                    WHERE CONCAT(primer_nombre, ' ', IFNULL(segundo_nombre, ''), ' ', 
+                                 primer_apellido, ' ', IFNULL(segundo_apellido, '')) LIKE :name 
+                    OR primer_nombre LIKE :name 
+                    OR primer_apellido LIKE :name 
+                    ORDER BY primer_nombre, primer_apellido";
             
             $searchTerm = "%{$name}%";
-            $results = $this->connectionManager->selectAll($sql, ['name' => $searchTerm]);
+            $results = $this->connectionManager->select($sql, ['name' => $searchTerm]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -138,17 +117,17 @@ class ClienteRepository
     }
 
     /**
-     * Obtener clientes activos
+     * Buscar clientes por género
      */
-    public function findActive(): array
+    public function findByGender(string $genero): array
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE activo = 1 ORDER BY nombre, apellido";
-            $results = $this->connectionManager->selectAll($sql);
+            $sql = "SELECT * FROM {$this->table} WHERE genero = :genero ORDER BY primer_nombre";
+            $results = $this->connectionManager->select($sql, ['genero' => $genero]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
-            error_log("Error finding active clientes: " . $e->getMessage());
+            error_log("Error finding clientes by gender: " . $e->getMessage());
             return [];
         }
     }
@@ -159,25 +138,21 @@ class ClienteRepository
     public function update(ClienteEntity $cliente): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET nombre = :nombre, apellido = :apellido, documento = :documento, 
-                        tipo_documento = :tipo_documento, telefono = :telefono, email = :email,
-                        direccion = :direccion, activo = :activo, fecha_modificacion = NOW()
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $cliente->getId(),
-                'nombre' => $cliente->getNombre(),
-                'apellido' => $cliente->getApellido(),
-                'documento' => $cliente->getDocumento(),
-                'tipo_documento' => $cliente->getTipoDocumento(),
-                'telefono' => $cliente->getTelefono(),
-                'email' => $cliente->getEmail(),
+            $data = [
+                'primer_nombre' => $cliente->getPrimerNombre(),
+                'segundo_nombre' => $cliente->getSegundoNombre(),
+                'primer_apellido' => $cliente->getPrimerApellido(),
+                'segundo_apellido' => $cliente->getSegundoApellido(),
+                'genero' => $cliente->getGenero(),
                 'direccion' => $cliente->getDireccion(),
-                'activo' => $cliente->isActivo() ? 1 : 0
+                'telefono' => $cliente->getTelefono()
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idCliente = :id";
+            $whereParams = ['id' => $cliente->getIdCliente()];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating cliente: " . $e->getMessage());
             return false;
@@ -185,13 +160,16 @@ class ClienteRepository
     }
 
     /**
-     * Eliminar cliente (soft delete)
+     * Eliminar cliente (hard delete - ya que no hay campo activo)
      */
     public function delete(int $id): bool
     {
         try {
-            $sql = "UPDATE {$this->table} SET activo = 0, fecha_modificacion = NOW() WHERE id = :id";
-            return $this->connectionManager->update($sql, ['id' => $id]);
+            $where = "idCliente = :id";
+            $params = ['id' => $id];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting cliente: " . $e->getMessage());
             return false;
@@ -199,17 +177,20 @@ class ClienteRepository
     }
 
     /**
-     * Verificar si existe documento
+     * Verificar si existe teléfono
      */
-    public function existsByDocument(string $documento): bool
+    public function existsByPhone(int $telefono): bool
     {
         try {
-            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE documento = :documento";
-            $result = $this->connectionManager->selectOne($sql, ['documento' => $documento]);
+            $count = $this->connectionManager->count(
+                $this->table,
+                'telefono = :telefono',
+                ['telefono' => $telefono]
+            );
             
-            return ($result['count'] ?? 0) > 0;
+            return $count > 0;
         } catch (Exception $e) {
-            error_log("Error checking document existence: " . $e->getMessage());
+            error_log("Error checking phone existence: " . $e->getMessage());
             return false;
         }
     }
@@ -222,10 +203,10 @@ class ClienteRepository
         try {
             $sql = "SELECT DISTINCT c.* 
                     FROM {$this->table} c 
-                    INNER JOIN pedido p ON c.id = p.cliente_id 
-                    WHERE p.estado = 'PENDIENTE' 
-                    ORDER BY c.nombre, c.apellido";
-            $results = $this->connectionManager->selectAll($sql);
+                    INNER JOIN pedido p ON c.idCliente = p.idCliente 
+                    WHERE p.estado_pedido = 'Pendiente' 
+                    ORDER BY c.primer_nombre, c.primer_apellido";
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -241,14 +222,14 @@ class ClienteRepository
     {
         try {
             $sql = "SELECT 
-                        COUNT(DISTINCT v.id) as total_ventas,
-                        COUNT(DISTINCT p.id) as total_pedidos,
-                        COALESCE(SUM(v.total), 0) as total_comprado,
-                        MAX(v.fecha_venta) as ultima_compra
+                        COUNT(DISTINCT v.idVenta) as total_ventas,
+                        COUNT(DISTINCT p.idPedido) as total_pedidos,
+                        COALESCE(SUM(v.Total), 0) as total_comprado,
+                        MAX(v.fechaRegistro) as ultima_compra
                     FROM {$this->table} c
-                    LEFT JOIN venta v ON c.id = v.cliente_id
-                    LEFT JOIN pedido p ON c.id = p.cliente_id
-                    WHERE c.id = :client_id";
+                    LEFT JOIN venta v ON c.idCliente = v.idCliente
+                    LEFT JOIN pedido p ON c.idCliente = p.idCliente
+                    WHERE c.idCliente = :client_id";
                     
             $result = $this->connectionManager->selectOne($sql, ['client_id' => $clientId]);
             
@@ -266,19 +247,38 @@ class ClienteRepository
     {
         try {
             $sql = "SELECT c.*, 
-                           COUNT(v.id) as total_ventas,
-                           SUM(v.total) as total_comprado
+                           COUNT(v.idVenta) as total_ventas,
+                           SUM(v.Total) as total_comprado
                     FROM {$this->table} c
-                    INNER JOIN venta v ON c.id = v.cliente_id
-                    GROUP BY c.id
+                    INNER JOIN venta v ON c.idCliente = v.idCliente
+                    GROUP BY c.idCliente, c.primer_nombre, c.segundo_nombre, 
+                             c.primer_apellido, c.segundo_apellido, c.genero, 
+                             c.direccion, c.telefono
                     ORDER BY total_comprado DESC
-                    LIMIT :limit";
+                    LIMIT {$limit}";
                     
-            $results = $this->connectionManager->selectAll($sql, ['limit' => $limit]);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
             error_log("Error getting top clients: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Contar clientes por género
+     */
+    public function countByGender(): array
+    {
+        try {
+            $sql = "SELECT genero, COUNT(*) as total 
+                    FROM {$this->table} 
+                    GROUP BY genero";
+            
+            return $this->connectionManager->select($sql);
+        } catch (Exception $e) {
+            error_log("Error counting clients by gender: " . $e->getMessage());
             return [];
         }
     }
@@ -289,17 +289,38 @@ class ClienteRepository
     private function mapToEntity(array $data): ClienteEntity
     {
         $cliente = new ClienteEntity();
-        $cliente->setId($data['id']);
-        $cliente->setNombre($data['nombre']);
-        $cliente->setApellido($data['apellido']);
-        $cliente->setDocumento($data['documento']);
-        $cliente->setTipoDocumento($data['tipo_documento']);
-        $cliente->setTelefono($data['telefono']);
-        $cliente->setEmail($data['email']);
-        $cliente->setDireccion($data['direccion']);
-        $cliente->setActivo((bool)$data['activo']);
-        $cliente->setFechaCreacion($data['fecha_creacion']);
-        $cliente->setFechaModificacion($data['fecha_modificacion']);
+        
+        if (isset($data['idCliente'])) {
+            $cliente->setIdCliente((int)$data['idCliente']);
+        }
+        
+        if (isset($data['primer_nombre'])) {
+            $cliente->setPrimerNombre($data['primer_nombre']);
+        }
+        
+        if (isset($data['segundo_nombre'])) {
+            $cliente->setSegundoNombre($data['segundo_nombre']);
+        }
+        
+        if (isset($data['primer_apellido'])) {
+            $cliente->setPrimerApellido($data['primer_apellido']);
+        }
+        
+        if (isset($data['segundo_apellido'])) {
+            $cliente->setSegundoApellido($data['segundo_apellido']);
+        }
+        
+        if (isset($data['genero'])) {
+            $cliente->setGenero($data['genero']);
+        }
+        
+        if (isset($data['direccion'])) {
+            $cliente->setDireccion($data['direccion']);
+        }
+        
+        if (isset($data['telefono'])) {
+            $cliente->setTelefono((int)$data['telefono']);
+        }
         
         return $cliente;
     }

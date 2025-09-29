@@ -14,7 +14,7 @@ class MySQLDatabase implements DatabaseInterface
     private bool $isConnected = false;
     private string $logFile;
 
-    public function __construct(array $config = null)
+    public function __construct(?array $config = null)
     {
         $this->config = $config ?? $this->loadConfig();
         $this->logFile = __DIR__ . '/../../log/database.log';

@@ -22,18 +22,16 @@ class PagoRepository
     public function create(PagoEntity $pago): ?PagoEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (venta_id, metodo_pago, monto, fecha_pago, referencia) 
-                    VALUES (:venta_id, :metodo_pago, :monto, :fecha_pago, :referencia)";
-            
-            $params = [
-                'venta_id' => $pago->getVentaId(),
+            $data = [
+                'id_pedido' => $pago->getNrPedido(),
+                'monto_pagado' => $pago->getMontoPagado(),
+                'fecha_pago' => $pago->getFechaPago()->format('Y-m-d H:i:s'),
                 'metodo_pago' => $pago->getMetodoPago(),
-                'monto' => $pago->getMonto(),
-                'fecha_pago' => $pago->getFechaPago(),
-                'referencia' => $pago->getReferencia()
+                'descripcion' => $pago->getDescripcion(),
+                'id_venta' => $pago->getIdVenta()
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -53,12 +51,14 @@ class PagoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           v.total as venta_total, v.fecha_venta,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           v.Total as venta_total, v.fechaRegistro as fecha_venta,
+                           ped.estado_pedido,
+                           c.primer_nombre, c.primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN venta v ON p.venta_id = v.id 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id
-                    WHERE p.id = :id";
+                    LEFT JOIN venta v ON p.id_venta = v.idVenta 
+                    LEFT JOIN pedido ped ON p.id_pedido = ped.idPedido
+                    LEFT JOIN cliente c ON v.idCliente = c.idCliente
+                    WHERE p.idPago = :id";
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -75,17 +75,42 @@ class PagoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           v.total as venta_total, v.fecha_venta,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           v.Total as venta_total, v.fechaRegistro as fecha_venta,
+                           ped.estado_pedido,
+                           c.primer_nombre, c.primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN venta v ON p.venta_id = v.id 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id
+                    LEFT JOIN venta v ON p.id_venta = v.idVenta 
+                    LEFT JOIN pedido ped ON p.id_pedido = ped.idPedido
+                    LEFT JOIN cliente c ON v.idCliente = c.idCliente
                     ORDER BY p.fecha_pago DESC";
-            $results = $this->connectionManager->selectAll($sql);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
             error_log("Error finding all pagos: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Obtener pagos por pedido
+     */
+    public function findByPedido(int $pedidoId): array
+    {
+        try {
+            $sql = "SELECT p.*, 
+                           v.Total as venta_total, v.fechaRegistro as fecha_venta,
+                           ped.estado_pedido
+                    FROM {$this->table} p 
+                    LEFT JOIN venta v ON p.id_venta = v.idVenta 
+                    LEFT JOIN pedido ped ON p.id_pedido = ped.idPedido
+                    WHERE p.id_pedido = :pedido_id
+                    ORDER BY p.fecha_pago DESC";
+            $results = $this->connectionManager->select($sql, ['pedido_id' => $pedidoId]);
+            
+            return array_map([$this, 'mapToEntity'], $results);
+        } catch (Exception $e) {
+            error_log("Error finding pagos by pedido: " . $e->getMessage());
             return [];
         }
     }
@@ -97,14 +122,14 @@ class PagoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           v.total as venta_total, v.fecha_venta,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           v.Total as venta_total, v.fechaRegistro as fecha_venta,
+                           ped.estado_pedido
                     FROM {$this->table} p 
-                    LEFT JOIN venta v ON p.venta_id = v.id 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id
-                    WHERE p.venta_id = :venta_id
+                    LEFT JOIN venta v ON p.id_venta = v.idVenta 
+                    LEFT JOIN pedido ped ON p.id_pedido = ped.idPedido
+                    WHERE p.id_venta = :venta_id
                     ORDER BY p.fecha_pago DESC";
-            $results = $this->connectionManager->selectAll($sql, ['venta_id' => $ventaId]);
+            $results = $this->connectionManager->select($sql, ['venta_id' => $ventaId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -120,14 +145,14 @@ class PagoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           v.total as venta_total, v.fecha_venta,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           v.Total as venta_total, v.fechaRegistro as fecha_venta,
+                           ped.estado_pedido
                     FROM {$this->table} p 
-                    LEFT JOIN venta v ON p.venta_id = v.id 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id
+                    LEFT JOIN venta v ON p.id_venta = v.idVenta 
+                    LEFT JOIN pedido ped ON p.id_pedido = ped.idPedido
                     WHERE p.metodo_pago = :metodo_pago
                     ORDER BY p.fecha_pago DESC";
-            $results = $this->connectionManager->selectAll($sql, ['metodo_pago' => $metodoPago]);
+            $results = $this->connectionManager->select($sql, ['metodo_pago' => $metodoPago]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -143,14 +168,14 @@ class PagoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           v.total as venta_total, v.fecha_venta,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           v.Total as venta_total, v.fechaRegistro as fecha_venta,
+                           ped.estado_pedido
                     FROM {$this->table} p 
-                    LEFT JOIN venta v ON p.venta_id = v.id 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id
+                    LEFT JOIN venta v ON p.id_venta = v.idVenta 
+                    LEFT JOIN pedido ped ON p.id_pedido = ped.idPedido
                     WHERE DATE(p.fecha_pago) = :fecha
                     ORDER BY p.fecha_pago DESC";
-            $results = $this->connectionManager->selectAll($sql, ['fecha' => $fecha]);
+            $results = $this->connectionManager->select($sql, ['fecha' => $fecha]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -166,16 +191,16 @@ class PagoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           v.total as venta_total, v.fecha_venta,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           v.Total as venta_total, v.fechaRegistro as fecha_venta,
+                           ped.estado_pedido
                     FROM {$this->table} p 
-                    LEFT JOIN venta v ON p.venta_id = v.id 
-                    LEFT JOIN cliente c ON v.cliente_id = c.id
+                    LEFT JOIN venta v ON p.id_venta = v.idVenta 
+                    LEFT JOIN pedido ped ON p.id_pedido = ped.idPedido
                     WHERE DATE(p.fecha_pago) BETWEEN :fecha_inicio AND :fecha_fin
                     ORDER BY p.fecha_pago DESC";
             
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
-            $results = $this->connectionManager->selectAll($sql, $params);
+            $results = $this->connectionManager->select($sql, $params);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -190,21 +215,20 @@ class PagoRepository
     public function update(PagoEntity $pago): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET venta_id = :venta_id, metodo_pago = :metodo_pago, 
-                        monto = :monto, fecha_pago = :fecha_pago, referencia = :referencia
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $pago->getId(),
-                'venta_id' => $pago->getVentaId(),
+            $data = [
+                'id_pedido' => $pago->getNrPedido(),
+                'monto_pagado' => $pago->getMontoPagado(),
+                'fecha_pago' => $pago->getFechaPago()->format('Y-m-d H:i:s'),
                 'metodo_pago' => $pago->getMetodoPago(),
-                'monto' => $pago->getMonto(),
-                'fecha_pago' => $pago->getFechaPago(),
-                'referencia' => $pago->getReferencia()
+                'descripcion' => $pago->getDescripcion(),
+                'id_venta' => $pago->getIdVenta()
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idPago = :id";
+            $whereParams = ['id' => $pago->getIdPago()];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating pago: " . $e->getMessage());
             return false;
@@ -217,8 +241,11 @@ class PagoRepository
     public function delete(int $id): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE id = :id";
-            return $this->connectionManager->delete($sql, ['id' => $id]);
+            $where = "idPago = :id";
+            $params = ['id' => $id];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting pago: " . $e->getMessage());
             return false;
@@ -226,18 +253,19 @@ class PagoRepository
     }
 
     /**
-     * Calcular total pagado para una venta
+     * Calcular total pagado para un pedido
      */
-    public function getTotalPaidForVenta(int $ventaId): float
+    public function getTotalPaidForPedido(int $pedidoId): float
     {
         try {
-            $sql = "SELECT COALESCE(SUM(monto), 0) as total FROM {$this->table} 
-                    WHERE venta_id = :venta_id";
-            $result = $this->connectionManager->selectOne($sql, ['venta_id' => $ventaId]);
+            $sql = "SELECT COALESCE(SUM(monto_pagado), 0) as total 
+                    FROM {$this->table} 
+                    WHERE id_pedido = :pedido_id";
+            $result = $this->connectionManager->selectOne($sql, ['pedido_id' => $pedidoId]);
             
             return (float)($result['total'] ?? 0);
         } catch (Exception $e) {
-            error_log("Error getting total paid for venta: " . $e->getMessage());
+            error_log("Error getting total paid for pedido: " . $e->getMessage());
             return 0.0;
         }
     }
@@ -250,14 +278,12 @@ class PagoRepository
         try {
             $sql = "SELECT metodo_pago, 
                            COUNT(*) as cantidad_transacciones,
-                           SUM(monto) as total_monto
+                           SUM(monto_pagado) as total_monto
                     FROM {$this->table}
                     GROUP BY metodo_pago
                     ORDER BY cantidad_transacciones DESC";
                     
-            $results = $this->connectionManager->selectAll($sql);
-            
-            return $results;
+            return $this->connectionManager->select($sql);
         } catch (Exception $e) {
             error_log("Error getting most used payment methods: " . $e->getMessage());
             return [];
@@ -272,17 +298,15 @@ class PagoRepository
         try {
             $sql = "SELECT metodo_pago,
                            COUNT(*) as cantidad_transacciones,
-                           SUM(monto) as total_monto,
-                           AVG(monto) as promedio_monto
+                           SUM(monto_pagado) as total_monto,
+                           AVG(monto_pagado) as promedio_monto
                     FROM {$this->table}
                     WHERE DATE(fecha_pago) BETWEEN :fecha_inicio AND :fecha_fin
                     GROUP BY metodo_pago
                     ORDER BY total_monto DESC";
                     
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
-            $results = $this->connectionManager->selectAll($sql, $params);
-            
-            return $results;
+            return $this->connectionManager->select($sql, $params);
         } catch (Exception $e) {
             error_log("Error getting payment method stats: " . $e->getMessage());
             return [];
@@ -295,7 +319,8 @@ class PagoRepository
     public function getTotalIncomeByDate(string $fecha): float
     {
         try {
-            $sql = "SELECT COALESCE(SUM(monto), 0) as total FROM {$this->table} 
+            $sql = "SELECT COALESCE(SUM(monto_pagado), 0) as total 
+                    FROM {$this->table} 
                     WHERE DATE(fecha_pago) = :fecha";
             $result = $this->connectionManager->selectOne($sql, ['fecha' => $fecha]);
             
@@ -312,7 +337,8 @@ class PagoRepository
     public function getTotalIncomeByDateRange(string $fechaInicio, string $fechaFin): float
     {
         try {
-            $sql = "SELECT COALESCE(SUM(monto), 0) as total FROM {$this->table} 
+            $sql = "SELECT COALESCE(SUM(monto_pagado), 0) as total 
+                    FROM {$this->table} 
                     WHERE DATE(fecha_pago) BETWEEN :fecha_inicio AND :fecha_fin";
             
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
@@ -326,28 +352,45 @@ class PagoRepository
     }
 
     /**
-     * Verificar si una venta está completamente pagada
+     * Verificar si un pedido está completamente pagado
      */
-    public function isVentaFullyPaid(int $ventaId): bool
+    public function isPedidoFullyPaid(int $pedidoId): bool
     {
         try {
-            $sql = "SELECT v.total as venta_total,
-                           COALESCE(SUM(p.monto), 0) as total_pagado
-                    FROM venta v
-                    LEFT JOIN {$this->table} p ON v.id = p.venta_id
-                    WHERE v.id = :venta_id
-                    GROUP BY v.id, v.total";
+            $sql = "SELECT ped.costo_total_pedido,
+                           COALESCE(SUM(p.monto_pagado), 0) as total_pagado
+                    FROM pedido ped
+                    LEFT JOIN {$this->table} p ON ped.idPedido = p.id_pedido
+                    WHERE ped.idPedido = :pedido_id
+                    GROUP BY ped.idPedido, ped.costo_total_pedido";
                     
-            $result = $this->connectionManager->selectOne($sql, ['venta_id' => $ventaId]);
+            $result = $this->connectionManager->selectOne($sql, ['pedido_id' => $pedidoId]);
             
             if ($result) {
-                return (float)$result['total_pagado'] >= (float)$result['venta_total'];
+                return (float)$result['total_pagado'] >= (float)$result['costo_total_pedido'];
             }
             
             return false;
         } catch (Exception $e) {
-            error_log("Error checking if venta is fully paid: " . $e->getMessage());
+            error_log("Error checking if pedido is fully paid: " . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Contar pagos por pedido
+     */
+    public function countByPedido(int $pedidoId): int
+    {
+        try {
+            return $this->connectionManager->count(
+                $this->table,
+                'id_pedido = :pedido_id',
+                ['pedido_id' => $pedidoId]
+            );
+        } catch (Exception $e) {
+            error_log("Error counting by pedido: " . $e->getMessage());
+            return 0;
         }
     }
 
@@ -357,12 +400,38 @@ class PagoRepository
     private function mapToEntity(array $data): PagoEntity
     {
         $pago = new PagoEntity();
-        $pago->setId($data['id']);
-        $pago->setVentaId($data['venta_id']);
-        $pago->setMetodoPago($data['metodo_pago']);
-        $pago->setMonto($data['monto']);
-        $pago->setFechaPago($data['fecha_pago']);
-        $pago->setReferencia($data['referencia']);
+        
+        if (isset($data['idPago'])) {
+            $pago->setIdPago((int)$data['idPago']);
+        }
+        
+        if (isset($data['id_pedido'])) {
+            $pago->setNrPedido((int)$data['id_pedido']);
+        }
+        
+        if (isset($data['monto_pagado'])) {
+            $pago->setMontoPagado((float)$data['monto_pagado']);
+        }
+        
+        if (isset($data['fecha_pago'])) {
+            try {
+                $pago->setFechaPago(new \DateTime($data['fecha_pago']));
+            } catch (\Exception $e) {
+                $pago->setFechaPago(new \DateTime());
+            }
+        }
+        
+        if (isset($data['metodo_pago'])) {
+            $pago->setMetodoPago($data['metodo_pago']);
+        }
+        
+        if (isset($data['descripcion'])) {
+            $pago->setDescripcion($data['descripcion']);
+        }
+        
+        if (isset($data['id_venta'])) {
+            $pago->setIdVenta($data['id_venta'] ? (int)$data['id_venta'] : null);
+        }
         
         return $pago;
     }

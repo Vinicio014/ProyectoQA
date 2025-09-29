@@ -1,11 +1,11 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\DetallePedidoEntity;
-use Proyecto\Repositories\DetallePedidoRepository;
-use Proyecto\Repositories\PedidoRepository;
-use Proyecto\Repositories\ProductoRepository;
+use App\Entities\DetallePedidoEntity;
+use App\Repositories\DetallePedidoRepository;
+use App\Repositories\PedidoRepository;
+use App\Repositories\ProductoRepository;
 use Exception;
 
 /**
@@ -35,7 +35,7 @@ class DetallePedidoService
     {
         try {
             // Validar que el pedido exista
-            $pedido = $this->pedidoRepository->obtenerPorId($datosDetalle['pedido_id']);
+            $pedido = $this->pedidoRepository->findById($datosDetalle['idPedido']);
             if (!$pedido) {
                 return [
                     'exito' => false,
@@ -45,7 +45,7 @@ class DetallePedidoService
             }
 
             // Validar que el producto exista
-            $producto = $this->productoRepository->obtenerPorId($datosDetalle['producto_id']);
+            $producto = $this->productoRepository->findById($datosDetalle['idProducto']);
             if (!$producto) {
                 return [
                     'exito' => false,
@@ -55,7 +55,7 @@ class DetallePedidoService
             }
 
             // Validar cantidad
-            if ($datosDetalle['cantidad'] <= 0) {
+            if ($datosDetalle['cantidadProducto'] <= 0) {
                 return [
                     'exito' => false,
                     'mensaje' => 'La cantidad debe ser mayor que 0',
@@ -63,19 +63,35 @@ class DetallePedidoService
                 ];
             }
 
-            $detalle = new DetallePedidoEntity();
-            $detalle->setPedidoId($datosDetalle['pedido_id']);
-            $detalle->setProductoId($datosDetalle['producto_id']);
-            $detalle->setCantidad($datosDetalle['cantidad']);
-            $detalle->setPrecioUnitario($datosDetalle['precio_unitario'] ?? $producto->getPrecio());
-            $detalle->setSubtotal($detalle->getPrecioUnitario() * $detalle->getCantidad());
+            // Validar stock disponible
+            if ($producto->getStock() < $datosDetalle['cantidadProducto']) {
+                return [
+                    'exito' => false,
+                    'mensaje' => 'Stock insuficiente. Disponible: ' . $producto->getStock(),
+                    'datos' => null
+                ];
+            }
 
-            $detalleCreado = $this->detallePedidoRepository->crear($detalle);
+            $detalle = new DetallePedidoEntity();
+            $detalle->setIdPedido($datosDetalle['idPedido']);
+            $detalle->setIdProducto($datosDetalle['idProducto']);
+            $detalle->setCantidadProducto($datosDetalle['cantidadProducto']);
+            $detalle->setDiseno($datosDetalle['diseno'] ?? '');
+
+            $detalleCreado = $this->detallePedidoRepository->create($detalle);
+
+            // Reducir stock del producto
+            if ($detalleCreado) {
+                $this->productoRepository->reduceStock(
+                    $datosDetalle['idProducto'], 
+                    $datosDetalle['cantidadProducto']
+                );
+            }
 
             return [
                 'exito' => true,
                 'mensaje' => 'Detalle de pedido creado exitosamente',
-                'datos' => $this->formatearDetallePedido($detalleCreado)
+                'datos' => $detalleCreado ? $detalleCreado->toArray() : null
             ];
 
         } catch (Exception $e) {
@@ -93,7 +109,7 @@ class DetallePedidoService
     public function obtenerDetallePorId(int $id): array
     {
         try {
-            $detalle = $this->detallePedidoRepository->obtenerPorId($id);
+            $detalle = $this->detallePedidoRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -106,7 +122,7 @@ class DetallePedidoService
             return [
                 'exito' => true,
                 'mensaje' => 'Detalle encontrado',
-                'datos' => $this->formatearDetallePedido($detalle)
+                'datos' => $detalle->toArray()
             ];
 
         } catch (Exception $e) {
@@ -124,7 +140,7 @@ class DetallePedidoService
     public function obtenerDetallesPorPedido(int $pedidoId): array
     {
         try {
-            $pedido = $this->pedidoRepository->obtenerPorId($pedidoId);
+            $pedido = $this->pedidoRepository->findById($pedidoId);
             if (!$pedido) {
                 return [
                     'exito' => false,
@@ -133,12 +149,12 @@ class DetallePedidoService
                 ];
             }
 
-            $detalles = $this->detallePedidoRepository->obtenerPorPedido($pedidoId);
+            $detalles = $this->detallePedidoRepository->findByPedido($pedidoId);
             
             return [
                 'exito' => true,
                 'mensaje' => 'Detalles de pedido obtenidos',
-                'datos' => array_map([$this, 'formatearDetallePedido'], $detalles)
+                'datos' => array_map(fn($d) => $d->toArray(), $detalles)
             ];
 
         } catch (Exception $e) {
@@ -156,7 +172,7 @@ class DetallePedidoService
     public function actualizarDetallePedido(int $id, array $datosDetalle): array
     {
         try {
-            $detalle = $this->detallePedidoRepository->obtenerPorId($id);
+            $detalle = $this->detallePedidoRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -167,8 +183,8 @@ class DetallePedidoService
             }
 
             // Verificar que el pedido no esté completado
-            $pedido = $this->pedidoRepository->obtenerPorId($detalle->getPedidoId());
-            if ($pedido && $pedido->getEstado() === 'COMPLETADO') {
+            $pedido = $this->pedidoRepository->findById($detalle->getIdPedido());
+            if ($pedido && $pedido->getEstadoPedido() === 'Completado') {
                 return [
                     'exito' => false,
                     'mensaje' => 'No se puede modificar detalle de un pedido completado',
@@ -176,38 +192,49 @@ class DetallePedidoService
                 ];
             }
 
+            $cantidadAnterior = $detalle->getCantidadProducto();
+
             // Actualizar campos
-            if (isset($datosDetalle['cantidad'])) {
-                if ($datosDetalle['cantidad'] <= 0) {
+            if (isset($datosDetalle['cantidadProducto'])) {
+                if ($datosDetalle['cantidadProducto'] <= 0) {
                     return [
                         'exito' => false,
                         'mensaje' => 'La cantidad debe ser mayor que 0',
                         'datos' => null
                     ];
                 }
-                $detalle->setCantidad($datosDetalle['cantidad']);
+                $detalle->setCantidadProducto($datosDetalle['cantidadProducto']);
             }
 
-            if (isset($datosDetalle['precio_unitario'])) {
-                if ($datosDetalle['precio_unitario'] <= 0) {
-                    return [
-                        'exito' => false,
-                        'mensaje' => 'El precio unitario debe ser mayor que 0',
-                        'datos' => null
-                    ];
+            if (isset($datosDetalle['diseno'])) {
+                $detalle->setDiseno($datosDetalle['diseno']);
+            }
+
+            $resultado = $this->detallePedidoRepository->update($detalle);
+
+            if ($resultado) {
+                // Ajustar stock si cambió la cantidad
+                if (isset($datosDetalle['cantidadProducto'])) {
+                    $diferencia = $datosDetalle['cantidadProducto'] - $cantidadAnterior;
+                    if ($diferencia > 0) {
+                        $this->productoRepository->reduceStock($detalle->getIdProducto(), $diferencia);
+                    } elseif ($diferencia < 0) {
+                        $this->productoRepository->increaseStock($detalle->getIdProducto(), abs($diferencia));
+                    }
                 }
-                $detalle->setPrecioUnitario($datosDetalle['precio_unitario']);
+
+                $detalleActualizado = $this->detallePedidoRepository->findById($id);
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Detalle de pedido actualizado exitosamente',
+                    'datos' => $detalleActualizado->toArray()
+                ];
             }
-
-            // Recalcular subtotal
-            $detalle->setSubtotal($detalle->getPrecioUnitario() * $detalle->getCantidad());
-
-            $detalleActualizado = $this->detallePedidoRepository->actualizar($detalle);
 
             return [
-                'exito' => true,
-                'mensaje' => 'Detalle de pedido actualizado exitosamente',
-                'datos' => $this->formatearDetallePedido($detalleActualizado)
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar el detalle',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
@@ -225,7 +252,7 @@ class DetallePedidoService
     public function eliminarDetallePedido(int $id): array
     {
         try {
-            $detalle = $this->detallePedidoRepository->obtenerPorId($id);
+            $detalle = $this->detallePedidoRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -236,8 +263,8 @@ class DetallePedidoService
             }
 
             // Verificar que el pedido no esté completado
-            $pedido = $this->pedidoRepository->obtenerPorId($detalle->getPedidoId());
-            if ($pedido && $pedido->getEstado() === 'COMPLETADO') {
+            $pedido = $this->pedidoRepository->findById($detalle->getIdPedido());
+            if ($pedido && $pedido->getEstadoPedido() === 'Completado') {
                 return [
                     'exito' => false,
                     'mensaje' => 'No se puede eliminar detalle de un pedido completado',
@@ -245,7 +272,13 @@ class DetallePedidoService
                 ];
             }
 
-            $resultado = $this->detallePedidoRepository->eliminar($id);
+            // Devolver stock antes de eliminar
+            $this->productoRepository->increaseStock(
+                $detalle->getIdProducto(), 
+                $detalle->getCantidadProducto()
+            );
+
+            $resultado = $this->detallePedidoRepository->delete($id);
 
             if ($resultado) {
                 return [
@@ -271,192 +304,12 @@ class DetallePedidoService
     }
 
     /**
-     * Obtener productos más pedidos
-     */
-    public function obtenerProductosMasPedidos(int $limite = 10, array $filtros = []): array
-    {
-        try {
-            $productos = $this->detallePedidoRepository->obtenerProductosMasPedidos($limite, $filtros);
-            
-            return [
-                'exito' => true,
-                'mensaje' => 'Productos más pedidos obtenidos',
-                'datos' => $productos
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener productos más pedidos: ' . $e->getMessage(),
-                'datos' => []
-            ];
-        }
-    }
-
-    /**
-     * Obtener estadísticas de productos pedidos
-     */
-    public function obtenerEstadisticasProductosPedidos(array $filtros = []): array
-    {
-        try {
-            $estadisticas = [
-                'total_items_pedidos' => $this->detallePedidoRepository->contarTotalItems($filtros),
-                'cantidad_total_pedida' => $this->detallePedidoRepository->calcularCantidadTotal($filtros),
-                'monto_total_pedidos' => $this->detallePedidoRepository->calcularMontoTotal($filtros),
-                'productos_mas_pedidos' => $this->detallePedidoRepository->obtenerProductosMasPedidos(5, $filtros),
-                'productos_menos_pedidos' => $this->detallePedidoRepository->obtenerProductosMenosPedidos(5, $filtros),
-                'promedio_cantidad_por_pedido' => $this->detallePedidoRepository->calcularPromedioCantidad($filtros),
-                'promedio_precio_unitario' => $this->detallePedidoRepository->calcularPromedioPrecio($filtros)
-            ];
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Estadísticas obtenidas exitosamente',
-                'datos' => $estadisticas
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener estadísticas: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
-     * Obtener pedidos de un producto específico
-     */
-    public function obtenerPedidosProducto(int $productoId, array $filtros = []): array
-    {
-        try {
-            $producto = $this->productoRepository->obtenerPorId($productoId);
-            if (!$producto) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Producto no encontrado',
-                    'datos' => []
-                ];
-            }
-
-            $detalles = $this->detallePedidoRepository->obtenerPorProducto($productoId, $filtros);
-            
-            return [
-                'exito' => true,
-                'mensaje' => 'Pedidos del producto obtenidos',
-                'datos' => [
-                    'producto' => [
-                        'id' => $producto->getId(),
-                        'nombre' => $producto->getNombre(),
-                        'codigo' => $producto->getCodigo()
-                    ],
-                    'pedidos' => array_map([$this, 'formatearDetallePedido'], $detalles),
-                    'resumen' => [
-                        'total_pedido' => array_sum(array_map(fn($d) => $d->getCantidad(), $detalles)),
-                        'monto_total' => array_sum(array_map(fn($d) => $d->getSubtotal(), $detalles)),
-                        'numero_pedidos' => count($detalles)
-                    ]
-                ]
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener pedidos del producto: ' . $e->getMessage(),
-                'datos' => []
-            ];
-        }
-    }
-
-    /**
-     * Calcular demanda futura por producto
-     */
-    public function calcularDemandaFutura(int $productoId, int $diasFuturos = 30): array
-    {
-        try {
-            $producto = $this->productoRepository->obtenerPorId($productoId);
-            if (!$producto) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Producto no encontrado',
-                    'datos' => null
-                ];
-            }
-
-            $fechaLimite = new \DateTime();
-            $fechaLimite->add(new \DateInterval("P{$diasFuturos}D"));
-
-            $pedidosPendientes = $this->detallePedidoRepository->obtenerPedidosPendientes($productoId, $fechaLimite);
-            $cantidadPendiente = array_sum(array_map(fn($d) => $d->getCantidad(), $pedidosPendientes));
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Demanda futura calculada',
-                'datos' => [
-                    'producto_id' => $productoId,
-                    'producto_nombre' => $producto->getNombre(),
-                    'stock_actual' => $producto->getStock(),
-                    'cantidad_pedida_pendiente' => $cantidadPendiente,
-                    'stock_disponible_futuro' => $producto->getStock() - $cantidadPendiente,
-                    'necesita_restock' => ($producto->getStock() - $cantidadPendiente) <= $producto->getStockMinimo(),
-                    'pedidos_pendientes' => count($pedidosPendientes),
-                    'dias_proyeccion' => $diasFuturos
-                ]
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al calcular demanda futura: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
-     * Obtener resumen de pedidos por estado
-     */
-    public function obtenerResumenPorEstado(array $filtros = []): array
-    {
-        try {
-            $resumen = [
-                'pendientes' => $this->detallePedidoRepository->obtenerPorEstadoPedido('PENDIENTE', $filtros),
-                'en_proceso' => $this->detallePedidoRepository->obtenerPorEstadoPedido('EN_PROCESO', $filtros),
-                'completados' => $this->detallePedidoRepository->obtenerPorEstadoPedido('COMPLETADO', $filtros),
-                'cancelados' => $this->detallePedidoRepository->obtenerPorEstadoPedido('CANCELADO', $filtros)
-            ];
-
-            $estadisticas = [];
-            foreach ($resumen as $estado => $detalles) {
-                $estadisticas[$estado] = [
-                    'cantidad_items' => count($detalles),
-                    'cantidad_productos' => array_sum(array_map(fn($d) => $d->getCantidad(), $detalles)),
-                    'monto_total' => array_sum(array_map(fn($d) => $d->getSubtotal(), $detalles))
-                ];
-            }
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Resumen por estado obtenido',
-                'datos' => $estadisticas
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener resumen por estado: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
-     * Verificar disponibilidad para pedido
+     * Validar disponibilidad para pedido
      */
     public function verificarDisponibilidadPedido(int $pedidoId): array
     {
         try {
-            $pedido = $this->pedidoRepository->obtenerPorId($pedidoId);
+            $pedido = $this->pedidoRepository->findById($pedidoId);
             if (!$pedido) {
                 return [
                     'exito' => false,
@@ -465,26 +318,26 @@ class DetallePedidoService
                 ];
             }
 
-            $detalles = $this->detallePedidoRepository->obtenerPorPedido($pedidoId);
+            $detalles = $this->detallePedidoRepository->findByPedido($pedidoId);
             $disponibilidad = [];
             $todoDisponible = true;
 
             foreach ($detalles as $detalle) {
-                $producto = $this->productoRepository->obtenerPorId($detalle->getProductoId());
-                $disponible = $producto && $producto->getStock() >= $detalle->getCantidad();
+                $producto = $this->productoRepository->findById($detalle->getIdProducto());
+                $disponible = $producto && $producto->getStock() >= $detalle->getCantidadProducto();
                 
                 if (!$disponible) {
                     $todoDisponible = false;
                 }
 
                 $disponibilidad[] = [
-                    'detalle_id' => $detalle->getId(),
-                    'producto_id' => $producto ? $producto->getId() : null,
+                    'detalle_id' => $detalle->getIdDetallePedido(),
+                    'producto_id' => $producto ? $producto->getIdProducto() : null,
                     'producto_nombre' => $producto ? $producto->getNombre() : 'Producto no encontrado',
-                    'cantidad_pedida' => $detalle->getCantidad(),
+                    'cantidad_pedida' => $detalle->getCantidadProducto(),
                     'stock_disponible' => $producto ? $producto->getStock() : 0,
                     'disponible' => $disponible,
-                    'faltante' => $disponible ? 0 : $detalle->getCantidad() - ($producto ? $producto->getStock() : 0)
+                    'faltante' => $disponible ? 0 : $detalle->getCantidadProducto() - ($producto ? $producto->getStock() : 0)
                 ];
             }
 
@@ -508,79 +361,49 @@ class DetallePedidoService
     }
 
     /**
+     * Obtener productos más pedidos
+     */
+    public function obtenerProductosMasPedidos(int $limite = 10): array
+    {
+        try {
+            $productos = $this->detallePedidoRepository->getMostOrderedProducts($limite);
+            
+            return [
+                'exito' => true,
+                'mensaje' => 'Productos más pedidos obtenidos',
+                'datos' => $productos
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al obtener productos más pedidos: ' . $e->getMessage(),
+                'datos' => []
+            ];
+        }
+    }
+
+    /**
      * Validar datos de detalle de pedido
      */
     public function validarDatosDetalle(array $datos): array
     {
         $errores = [];
 
-        if (empty($datos['pedido_id']) || $datos['pedido_id'] <= 0) {
+        if (empty($datos['idPedido']) || $datos['idPedido'] <= 0) {
             $errores[] = 'El pedido es requerido';
         }
 
-        if (empty($datos['producto_id']) || $datos['producto_id'] <= 0) {
+        if (empty($datos['idProducto']) || $datos['idProducto'] <= 0) {
             $errores[] = 'El producto es requerido';
         }
 
-        if (!isset($datos['cantidad']) || $datos['cantidad'] <= 0) {
+        if (!isset($datos['cantidadProducto']) || $datos['cantidadProducto'] <= 0) {
             $errores[] = 'La cantidad debe ser mayor que 0';
         }
-
-        if (isset($datos['precio_unitario']) && $datos['precio_unitario'] <= 0) {
-            $errores[] = 'El precio unitario debe ser mayor que 0';
-        }
-
         return [
             'valido' => empty($errores),
             'errores' => $errores
         ];
-    }
-
-    /**
-     * Formatear detalle de pedido con información completa
-     */
-    private function formatearDetallePedido(DetallePedidoEntity $detalle): array
-    {
-        $datos = $detalle->toArray();
-        
-        // Agregar información del producto
-        try {
-            $producto = $this->productoRepository->obtenerPorId($detalle->getProductoId());
-            if ($producto) {
-                $datos['producto'] = [
-                    'id' => $producto->getId(),
-                    'nombre' => $producto->getNombre(),
-                    'codigo' => $producto->getCodigo(),
-                    'marca' => $producto->getMarca(),
-                    'color' => $producto->getColor(),
-                    'stock_actual' => $producto->getStock(),
-                    'precio_actual' => $producto->getPrecio()
-                ];
-                
-                // Verificar disponibilidad
-                $datos['stock_suficiente'] = $producto->getStock() >= $detalle->getCantidad();
-                $datos['faltante'] = $datos['stock_suficiente'] ? 0 : $detalle->getCantidad() - $producto->getStock();
-            }
-        } catch (Exception $e) {
-            $datos['producto'] = null;
-        }
-
-        // Agregar información básica del pedido
-        try {
-            $pedido = $this->pedidoRepository->obtenerPorId($detalle->getPedidoId());
-            if ($pedido) {
-                $datos['pedido'] = [
-                    'id' => $pedido->getId(),
-                    'fecha_pedido' => $pedido->getFechaPedido()->format('Y-m-d'),
-                    'fecha_entrega' => $pedido->getFechaEntrega()->format('Y-m-d'),
-                    'estado' => $pedido->getEstado(),
-                    'cliente_id' => $pedido->getClienteId()
-                ];
-            }
-        } catch (Exception $e) {
-            $datos['pedido'] = null;
-        }
-
-        return $datos;
     }
 }

@@ -22,18 +22,14 @@ class DetallePedidoRepository
     public function create(DetallePedidoEntity $detalle): ?DetallePedidoEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (pedido_id, producto_id, cantidad, precio_unitario, subtotal) 
-                    VALUES (:pedido_id, :producto_id, :cantidad, :precio_unitario, :subtotal)";
-            
-            $params = [
-                'pedido_id' => $detalle->getPedidoId(),
-                'producto_id' => $detalle->getProductoId(),
-                'cantidad' => $detalle->getCantidad(),
-                'precio_unitario' => $detalle->getPrecioUnitario(),
-                'subtotal' => $detalle->getSubtotal()
+            $data = [
+                'cantidad_producto' => $detalle->getCantidadProducto(),
+                'diseno' => $detalle->getDiseno(),
+                'id_pedido' => $detalle->getIdPedido(),
+                'id_producto' => $detalle->getIdProducto()
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -53,12 +49,12 @@ class DetallePedidoRepository
     {
         try {
             $sql = "SELECT dp.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           pe.fecha_pedido, pe.estado as pedido_estado
+                           p.nombre as producto_nombre,
+                           pe.fecha_pedido, pe.estado_pedido
                     FROM {$this->table} dp 
-                    LEFT JOIN producto p ON dp.producto_id = p.id 
-                    LEFT JOIN pedido pe ON dp.pedido_id = pe.id 
-                    WHERE dp.id = :id";
+                    LEFT JOIN producto p ON dp.id_producto = p.idProducto 
+                    LEFT JOIN pedido pe ON dp.id_pedido = pe.idPedido 
+                    WHERE dp.id_detalle_pedido = :id";
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -75,14 +71,14 @@ class DetallePedidoRepository
     {
         try {
             $sql = "SELECT dp.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           pe.fecha_pedido, pe.estado as pedido_estado
+                           p.nombre as producto_nombre,
+                           pe.fecha_pedido, pe.estado_pedido
                     FROM {$this->table} dp 
-                    LEFT JOIN producto p ON dp.producto_id = p.id 
-                    LEFT JOIN pedido pe ON dp.pedido_id = pe.id 
-                    WHERE dp.pedido_id = :pedido_id
-                    ORDER BY dp.id";
-            $results = $this->connectionManager->selectAll($sql, ['pedido_id' => $pedidoId]);
+                    LEFT JOIN producto p ON dp.id_producto = p.idProducto 
+                    LEFT JOIN pedido pe ON dp.id_pedido = pe.idPedido 
+                    WHERE dp.id_pedido = :pedido_id
+                    ORDER BY dp.id_detalle_pedido";
+            $results = $this->connectionManager->select($sql, ['pedido_id' => $pedidoId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -98,14 +94,14 @@ class DetallePedidoRepository
     {
         try {
             $sql = "SELECT dp.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           pe.fecha_pedido, pe.estado as pedido_estado
+                           p.nombre as producto_nombre,
+                           pe.fecha_pedido, pe.estado_pedido
                     FROM {$this->table} dp 
-                    LEFT JOIN producto p ON dp.producto_id = p.id 
-                    LEFT JOIN pedido pe ON dp.pedido_id = pe.id 
-                    WHERE dp.producto_id = :producto_id
+                    LEFT JOIN producto p ON dp.id_producto = p.idProducto 
+                    LEFT JOIN pedido pe ON dp.id_pedido = pe.idPedido 
+                    WHERE dp.id_producto = :producto_id
                     ORDER BY pe.fecha_pedido DESC";
-            $results = $this->connectionManager->selectAll($sql, ['producto_id' => $productoId]);
+            $results = $this->connectionManager->select($sql, ['producto_id' => $productoId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -121,13 +117,13 @@ class DetallePedidoRepository
     {
         try {
             $sql = "SELECT dp.*, 
-                           p.nombre as producto_nombre, p.codigo as producto_codigo,
-                           pe.fecha_pedido, pe.estado as pedido_estado
+                           p.nombre as producto_nombre,
+                           pe.fecha_pedido, pe.estado_pedido
                     FROM {$this->table} dp 
-                    LEFT JOIN producto p ON dp.producto_id = p.id 
-                    LEFT JOIN pedido pe ON dp.pedido_id = pe.id 
-                    ORDER BY pe.fecha_pedido DESC, dp.id";
-            $results = $this->connectionManager->selectAll($sql);
+                    LEFT JOIN producto p ON dp.id_producto = p.idProducto 
+                    LEFT JOIN pedido pe ON dp.id_pedido = pe.idPedido 
+                    ORDER BY pe.fecha_pedido DESC, dp.id_detalle_pedido";
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -142,22 +138,18 @@ class DetallePedidoRepository
     public function update(DetallePedidoEntity $detalle): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET pedido_id = :pedido_id, producto_id = :producto_id, 
-                        cantidad = :cantidad, precio_unitario = :precio_unitario, 
-                        subtotal = :subtotal
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $detalle->getId(),
-                'pedido_id' => $detalle->getPedidoId(),
-                'producto_id' => $detalle->getProductoId(),
-                'cantidad' => $detalle->getCantidad(),
-                'precio_unitario' => $detalle->getPrecioUnitario(),
-                'subtotal' => $detalle->getSubtotal()
+            $data = [
+                'cantidad_producto' => $detalle->getCantidadProducto(),
+                'diseno' => $detalle->getDiseno(),
+                'id_pedido' => $detalle->getIdPedido(),
+                'id_producto' => $detalle->getIdProducto()
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "id_detalle_pedido = :id";
+            $whereParams = ['id' => $detalle->getIdDetallePedido()];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating detalle pedido: " . $e->getMessage());
             return false;
@@ -170,8 +162,11 @@ class DetallePedidoRepository
     public function delete(int $id): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE id = :id";
-            return $this->connectionManager->delete($sql, ['id' => $id]);
+            $where = "id_detalle_pedido = :id";
+            $params = ['id' => $id];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting detalle pedido: " . $e->getMessage());
             return false;
@@ -184,8 +179,11 @@ class DetallePedidoRepository
     public function deleteByPedido(int $pedidoId): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE pedido_id = :pedido_id";
-            return $this->connectionManager->delete($sql, ['pedido_id' => $pedidoId]);
+            $where = "id_pedido = :pedido_id";
+            $params = ['pedido_id' => $pedidoId];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting detalles by pedido: " . $e->getMessage());
             return false;
@@ -193,19 +191,21 @@ class DetallePedidoRepository
     }
 
     /**
-     * Calcular total de un pedido
+     * Calcular total de productos en un pedido
      */
-    public function calculatePedidoTotal(int $pedidoId): float
+    public function calculatePedidoTotalProducts(int $pedidoId): int
     {
         try {
-            $sql = "SELECT COALESCE(SUM(subtotal), 0) as total FROM {$this->table} 
-                    WHERE pedido_id = :pedido_id";
-            $result = $this->connectionManager->selectOne($sql, ['pedido_id' => $pedidoId]);
+            $count = $this->connectionManager->count(
+                $this->table,
+                'id_pedido = :pedido_id',
+                ['pedido_id' => $pedidoId]
+            );
             
-            return (float)($result['total'] ?? 0);
+            return $count;
         } catch (Exception $e) {
-            error_log("Error calculating pedido total: " . $e->getMessage());
-            return 0.0;
+            error_log("Error calculating pedido total products: " . $e->getMessage());
+            return 0;
         }
     }
 
@@ -215,18 +215,16 @@ class DetallePedidoRepository
     public function getMostOrderedProducts(int $limit = 10): array
     {
         try {
-            $sql = "SELECT p.id, p.nombre, p.codigo, 
-                           SUM(dp.cantidad) as total_pedido,
-                           COUNT(DISTINCT dp.pedido_id) as numero_pedidos
+            $sql = "SELECT p.idProducto, p.nombre, 
+                           SUM(dp.cantidad_producto) as total_pedido,
+                           COUNT(DISTINCT dp.id_pedido) as numero_pedidos
                     FROM {$this->table} dp
-                    INNER JOIN producto p ON dp.producto_id = p.id
-                    GROUP BY p.id
+                    INNER JOIN producto p ON dp.id_producto = p.idProducto
+                    GROUP BY p.idProducto, p.nombre
                     ORDER BY total_pedido DESC
-                    LIMIT :limit";
+                    LIMIT {$limit}";
                     
-            $results = $this->connectionManager->selectAll($sql, ['limit' => $limit]);
-            
-            return $results;
+            return $this->connectionManager->select($sql);
         } catch (Exception $e) {
             error_log("Error getting most ordered products: " . $e->getMessage());
             return [];
@@ -239,8 +237,9 @@ class DetallePedidoRepository
     public function getProductQuantityOrdered(int $productoId): int
     {
         try {
-            $sql = "SELECT COALESCE(SUM(cantidad), 0) as total FROM {$this->table} 
-                    WHERE producto_id = :producto_id";
+            $sql = "SELECT COALESCE(SUM(cantidad_producto), 0) as total 
+                    FROM {$this->table} 
+                    WHERE id_producto = :producto_id";
             $result = $this->connectionManager->selectOne($sql, ['producto_id' => $productoId]);
             
             return (int)($result['total'] ?? 0);
@@ -256,19 +255,54 @@ class DetallePedidoRepository
     public function checkStockAvailability(int $pedidoId): array
     {
         try {
-            $sql = "SELECT dp.producto_id, p.nombre as producto_nombre, 
-                           dp.cantidad as cantidad_pedida, p.stock as stock_disponible,
-                           (p.stock >= dp.cantidad) as disponible
+            $sql = "SELECT dp.id_producto, p.nombre as producto_nombre, 
+                           dp.cantidad_producto as cantidad_pedida, p.stock as stock_disponible,
+                           (p.stock >= dp.cantidad_producto) as disponible
                     FROM {$this->table} dp
-                    INNER JOIN producto p ON dp.producto_id = p.id
-                    WHERE dp.pedido_id = :pedido_id";
+                    INNER JOIN producto p ON dp.id_producto = p.idProducto
+                    WHERE dp.id_pedido = :pedido_id";
                     
-            $results = $this->connectionManager->selectAll($sql, ['pedido_id' => $pedidoId]);
-            
-            return $results;
+            return $this->connectionManager->select($sql, ['pedido_id' => $pedidoId]);
         } catch (Exception $e) {
             error_log("Error checking stock availability: " . $e->getMessage());
             return [];
+        }
+    }
+
+    /**
+     * Obtener detalles con diseño personalizado
+     */
+    public function findWithCustomDesign(): array
+    {
+        try {
+            $sql = "SELECT dp.*, p.nombre as producto_nombre
+                    FROM {$this->table} dp
+                    INNER JOIN producto p ON dp.id_producto = p.idProducto
+                    WHERE dp.diseno IS NOT NULL AND dp.diseno != ''
+                    ORDER BY dp.id_detalle_pedido DESC";
+            
+            $results = $this->connectionManager->select($sql);
+            return array_map([$this, 'mapToEntity'], $results);
+        } catch (Exception $e) {
+            error_log("Error finding details with custom design: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Contar detalles por pedido
+     */
+    public function countByPedido(int $pedidoId): int
+    {
+        try {
+            return $this->connectionManager->count(
+                $this->table,
+                'id_pedido = :pedido_id',
+                ['pedido_id' => $pedidoId]
+            );
+        } catch (Exception $e) {
+            error_log("Error counting detalles by pedido: " . $e->getMessage());
+            return 0;
         }
     }
 
@@ -278,12 +312,26 @@ class DetallePedidoRepository
     private function mapToEntity(array $data): DetallePedidoEntity
     {
         $detalle = new DetallePedidoEntity();
-        $detalle->setId($data['id']);
-        $detalle->setPedidoId($data['pedido_id']);
-        $detalle->setProductoId($data['producto_id']);
-        $detalle->setCantidad($data['cantidad']);
-        $detalle->setPrecioUnitario($data['precio_unitario']);
-        $detalle->setSubtotal($data['subtotal']);
+        
+        if (isset($data['id_detalle_pedido'])) {
+            $detalle->setIdDetallePedido((int)$data['id_detalle_pedido']);
+        }
+        
+        if (isset($data['cantidad_producto'])) {
+            $detalle->setCantidadProducto((int)$data['cantidad_producto']);
+        }
+        
+        if (isset($data['diseno'])) {
+            $detalle->setDiseno($data['diseno']);
+        }
+        
+        if (isset($data['id_pedido'])) {
+            $detalle->setIdPedido((int)$data['id_pedido']);
+        }
+        
+        if (isset($data['id_producto'])) {
+            $detalle->setIdProducto((int)$data['id_producto']);
+        }
         
         return $detalle;
     }

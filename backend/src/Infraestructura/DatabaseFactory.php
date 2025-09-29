@@ -17,7 +17,7 @@ class DatabaseFactory
     /**
      * Obtener instancia única de la base de datos
      */
-    public static function getInstance(string $type = 'mysql', array $config = null): DatabaseInterface
+    public static function getInstance(string $type = 'mysql', ?array $config = null): DatabaseInterface
     {
         if (self::$instance === null) {
             self::$config = $config ?? self::loadDefaultConfig();
@@ -85,13 +85,38 @@ class DatabaseFactory
     /**
      * Probar conexión sin crear instancia singleton
      */
-    public static function testConnection(string $type = 'mysql', array $config = null): array
+    public static function testConnection(string $type = 'mysql', ?array $config = null): array
     {
         try {
             $tempConfig = $config ?? self::loadDefaultConfig();
-            $tempDatabase = self::createDatabase($type);
             
-            return $tempDatabase->testConnection();
+            // Crear una instancia temporal de la base de datos
+            $tempDb = new MySQLDatabase($tempConfig);
+            
+            // Intentar conectar
+            $connection = $tempDb->connect();
+            
+            if ($connection) {
+                $info = [
+                    'host' => $tempConfig['host'] ?? 'N/A',
+                    'database' => $tempConfig['database'] ?? 'N/A',
+                    'port' => $tempConfig['port'] ?? 'N/A'
+                ];
+                
+                $tempDb->disconnect();
+                
+                return [
+                    'success' => true,
+                    'message' => 'Conexión exitosa',
+                    'info' => $info
+                ];
+            }
+            
+            return [
+                'success' => false,
+                'message' => 'No se pudo establecer la conexión',
+                'info' => null
+            ];
             
         } catch (Exception $e) {
             return [

@@ -1,9 +1,9 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\RolEntity;
-use Proyecto\Repositories\RolRepository;
+use App\Entities\RolEntity;
+use App\Repositories\RolRepository;
 use Exception;
 
 /**
@@ -25,26 +25,25 @@ class RolService
     public function crearRol(array $datosRol): array
     {
         try {
-            // Validar que el nombre del rol no exista
-            if ($this->existeRolPorNombre($datosRol['nombre'])) {
+            // Validar que la descripción del rol no exista
+            if ($this->existeRolPorDescripcion($datosRol['descripcion'])) {
                 return [
                     'exito' => false,
-                    'mensaje' => 'Ya existe un rol con ese nombre',
+                    'mensaje' => 'Ya existe un rol con esa descripción',
                     'datos' => null
                 ];
             }
 
             $rol = new RolEntity();
-            $rol->setNombre($datosRol['nombre']);
-            $rol->setDescripcion($datosRol['descripcion'] ?? '');
-            $rol->setEstado($datosRol['estado'] ?? 'ACTIVO');
+            $rol->setDescripcion($datosRol['descripcion']);
+            $rol->setEsActivo($datosRol['esActivo'] ?? true);
 
-            $rolCreado = $this->rolRepository->crear($rol);
+            $rolCreado = $this->rolRepository->create($rol);
 
             return [
                 'exito' => true,
                 'mensaje' => 'Rol creado exitosamente',
-                'datos' => $rolCreado->toArray()
+                'datos' => $rolCreado ? $rolCreado->toArray() : null
             ];
 
         } catch (Exception $e) {
@@ -62,7 +61,7 @@ class RolService
     public function obtenerRolPorId(int $id): array
     {
         try {
-            $rol = $this->rolRepository->obtenerPorId($id);
+            $rol = $this->rolRepository->findById($id);
 
             if (!$rol) {
                 return [
@@ -88,12 +87,12 @@ class RolService
     }
 
     /**
-     * Listar todos los roles activos
+     * Listar todos los roles
      */
-    public function listarRolesActivos(): array
+    public function listarRoles(): array
     {
         try {
-            $roles = $this->rolRepository->listarPorEstado('ACTIVO');
+            $roles = $this->rolRepository->findAll();
             
             return [
                 'exito' => true,
@@ -111,12 +110,35 @@ class RolService
     }
 
     /**
+     * Listar todos los roles activos
+     */
+    public function listarRolesActivos(): array
+    {
+        try {
+            $roles = $this->rolRepository->findActive();
+            
+            return [
+                'exito' => true,
+                'mensaje' => 'Roles activos obtenidos exitosamente',
+                'datos' => array_map(fn($rol) => $rol->toArray(), $roles)
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al listar roles activos: ' . $e->getMessage(),
+                'datos' => []
+            ];
+        }
+    }
+
+    /**
      * Actualizar rol
      */
     public function actualizarRol(int $id, array $datosRol): array
     {
         try {
-            $rol = $this->rolRepository->obtenerPorId($id);
+            $rol = $this->rolRepository->findById($id);
 
             if (!$rol) {
                 return [
@@ -126,34 +148,40 @@ class RolService
                 ];
             }
 
-            // Validar nombre único si se está cambiando
-            if (isset($datosRol['nombre']) && $datosRol['nombre'] !== $rol->getNombre()) {
-                if ($this->existeRolPorNombre($datosRol['nombre'])) {
+            // Validar descripción única si se está cambiando
+            if (isset($datosRol['descripcion']) && $datosRol['descripcion'] !== $rol->getDescripcion()) {
+                if ($this->existeRolPorDescripcion($datosRol['descripcion'])) {
                     return [
                         'exito' => false,
-                        'mensaje' => 'Ya existe un rol con ese nombre',
+                        'mensaje' => 'Ya existe un rol con esa descripción',
                         'datos' => null
                     ];
                 }
             }
 
             // Actualizar campos
-            if (isset($datosRol['nombre'])) {
-                $rol->setNombre($datosRol['nombre']);
-            }
             if (isset($datosRol['descripcion'])) {
                 $rol->setDescripcion($datosRol['descripcion']);
             }
-            if (isset($datosRol['estado'])) {
-                $rol->setEstado($datosRol['estado']);
+            if (isset($datosRol['esActivo'])) {
+                $rol->setEsActivo($datosRol['esActivo']);
             }
 
-            $rolActualizado = $this->rolRepository->actualizar($rol);
+            $resultado = $this->rolRepository->update($rol);
+
+            if ($resultado) {
+                $rolActualizado = $this->rolRepository->findById($id);
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Rol actualizado exitosamente',
+                    'datos' => $rolActualizado->toArray()
+                ];
+            }
 
             return [
-                'exito' => true,
-                'mensaje' => 'Rol actualizado exitosamente',
-                'datos' => $rolActualizado->toArray()
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar el rol',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
@@ -166,26 +194,17 @@ class RolService
     }
 
     /**
-     * Eliminar rol (cambiar estado a INACTIVO)
+     * Eliminar rol (soft delete)
      */
     public function eliminarRol(int $id): array
     {
         try {
-            // Verificar que no haya usuarios con este rol
-            if ($this->tieneUsuariosAsociados($id)) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'No se puede eliminar el rol porque tiene usuarios asociados',
-                    'datos' => null
-                ];
-            }
-
-            $resultado = $this->rolRepository->eliminar($id);
+            $resultado = $this->rolRepository->delete($id);
 
             if ($resultado) {
                 return [
                     'exito' => true,
-                    'mensaje' => 'Rol eliminado exitosamente',
+                    'mensaje' => 'Rol desactivado exitosamente',
                     'datos' => null
                 ];
             }
@@ -206,29 +225,51 @@ class RolService
     }
 
     /**
-     * Verificar si existe un rol por nombre
+     * Activar rol
      */
-    private function existeRolPorNombre(string $nombre): bool
+    public function activarRol(int $id): array
     {
         try {
-            $rol = $this->rolRepository->obtenerPorNombre($nombre);
-            return $rol !== null;
+            $resultado = $this->rolRepository->activate($id);
+
+            if ($resultado) {
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Rol activado exitosamente',
+                    'datos' => null
+                ];
+            }
+
+            return [
+                'exito' => false,
+                'mensaje' => 'No se pudo activar el rol',
+                'datos' => null
+            ];
+
         } catch (Exception $e) {
-            return false;
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al activar rol: ' . $e->getMessage(),
+                'datos' => null
+            ];
         }
     }
 
     /**
-     * Verificar si el rol tiene usuarios asociados
+     * Verificar si existe un rol por descripción
      */
-    private function tieneUsuariosAsociados(int $rolId): bool
+    private function existeRolPorDescripcion(string $descripcion): bool
     {
         try {
-            // Esta lógica debe implementarse cuando tengamos el UsuarioRepository
-            // Por ahora retornamos false
+            $roles = $this->rolRepository->findAll();
+            foreach ($roles as $rol) {
+                if (strtolower($rol->getDescripcion()) === strtolower($descripcion)) {
+                    return true;
+                }
+            }
             return false;
         } catch (Exception $e) {
-            return true; // Por seguridad, asumimos que sí tiene usuarios
+            return false;
         }
     }
 
@@ -238,13 +279,12 @@ class RolService
     public function obtenerRolesParaSelect(): array
     {
         try {
-            $roles = $this->rolRepository->listarPorEstado('ACTIVO');
+            $roles = $this->rolRepository->findActive();
             
             $rolesSelect = [];
             foreach ($roles as $rol) {
                 $rolesSelect[] = [
-                    'id' => $rol->getId(),
-                    'nombre' => $rol->getNombre(),
+                    'id' => $rol->getIdRol(),
                     'descripcion' => $rol->getDescripcion()
                 ];
             }
@@ -262,5 +302,24 @@ class RolService
                 'datos' => []
             ];
         }
+    }
+
+    /**
+     * Validar datos de rol
+     */
+    public function validarDatosRol(array $datos): array
+    {
+        $errores = [];
+
+        if (empty($datos['descripcion'])) {
+            $errores[] = 'La descripción es requerida';
+        } elseif (strlen($datos['descripcion']) < 3) {
+            $errores[] = 'La descripción debe tener al menos 3 caracteres';
+        }
+
+        return [
+            'valido' => empty($errores),
+            'errores' => $errores
+        ];
     }
 }

@@ -1,9 +1,9 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\CategoriaEntity;
-use Proyecto\Repositories\CategoriaRepository;
+use App\Entities\CategoriaEntity;
+use App\Repositories\CategoriaRepository;
 use Exception;
 
 /**
@@ -25,26 +25,25 @@ class CategoriaService
     public function crearCategoria(array $datosCategoria): array
     {
         try {
-            // Validar que el nombre no exista
-            if ($this->existeCategoriaPorNombre($datosCategoria['nombre'])) {
+            // Validar que la descripción no exista
+            if ($this->existeCategoriaPorDescripcion($datosCategoria['descripcion'])) {
                 return [
                     'exito' => false,
-                    'mensaje' => 'Ya existe una categoría con ese nombre',
+                    'mensaje' => 'Ya existe una categoría con esa descripción',
                     'datos' => null
                 ];
             }
 
             $categoria = new CategoriaEntity();
-            $categoria->setNombre($datosCategoria['nombre']);
-            $categoria->setDescripcion($datosCategoria['descripcion'] ?? '');
-            $categoria->setEstado($datosCategoria['estado'] ?? 'ACTIVO');
+            $categoria->setDescripcion($datosCategoria['descripcion']);
+            $categoria->setEsActivo($datosCategoria['esActivo'] ?? true);
 
-            $categoriaCreada = $this->categoriaRepository->crear($categoria);
+            $categoriaCreada = $this->categoriaRepository->create($categoria);
 
             return [
                 'exito' => true,
                 'mensaje' => 'Categoría creada exitosamente',
-                'datos' => $categoriaCreada->toArray()
+                'datos' => $categoriaCreada ? $categoriaCreada->toArray() : null
             ];
 
         } catch (Exception $e) {
@@ -62,7 +61,7 @@ class CategoriaService
     public function obtenerCategoriaPorId(int $id): array
     {
         try {
-            $categoria = $this->categoriaRepository->obtenerPorId($id);
+            $categoria = $this->categoriaRepository->findById($id);
 
             if (!$categoria) {
                 return [
@@ -72,15 +71,10 @@ class CategoriaService
                 ];
             }
 
-            $datos = $categoria->toArray();
-            
-            // Agregar cantidad de productos (se implementará cuando tengamos ProductoRepository)
-            $datos['cantidad_productos'] = 0;
-
             return [
                 'exito' => true,
                 'mensaje' => 'Categoría encontrada',
-                'datos' => $datos
+                'datos' => $categoria->toArray()
             ];
 
         } catch (Exception $e) {
@@ -98,14 +92,9 @@ class CategoriaService
     public function listarCategoriasActivas(): array
     {
         try {
-            $categorias = $this->categoriaRepository->listarPorEstado('ACTIVO');
+            $categorias = $this->categoriaRepository->findActive();
             
-            $datos = [];
-            foreach ($categorias as $categoria) {
-                $categoriaArray = $categoria->toArray();
-                $categoriaArray['cantidad_productos'] = 0; // Se calculará con ProductoRepository
-                $datos[] = $categoriaArray;
-            }
+            $datos = array_map(fn($categoria) => $categoria->toArray(), $categorias);
 
             return [
                 'exito' => true,
@@ -123,19 +112,14 @@ class CategoriaService
     }
 
     /**
-     * Listar todas las categorías con filtros
+     * Listar todas las categorías
      */
-    public function listarCategorias(array $filtros = []): array
+    public function listarCategorias(): array
     {
         try {
-            $categorias = $this->categoriaRepository->listarConFiltros($filtros);
+            $categorias = $this->categoriaRepository->findAll();
             
-            $datos = [];
-            foreach ($categorias as $categoria) {
-                $categoriaArray = $categoria->toArray();
-                $categoriaArray['cantidad_productos'] = 0; // Se calculará con ProductoRepository
-                $datos[] = $categoriaArray;
-            }
+            $datos = array_map(fn($categoria) => $categoria->toArray(), $categorias);
 
             return [
                 'exito' => true,
@@ -158,7 +142,7 @@ class CategoriaService
     public function actualizarCategoria(int $id, array $datosCategoria): array
     {
         try {
-            $categoria = $this->categoriaRepository->obtenerPorId($id);
+            $categoria = $this->categoriaRepository->findById($id);
 
             if (!$categoria) {
                 return [
@@ -168,34 +152,41 @@ class CategoriaService
                 ];
             }
 
-            // Validar nombre único si se está cambiando
-            if (isset($datosCategoria['nombre']) && $datosCategoria['nombre'] !== $categoria->getNombre()) {
-                if ($this->existeCategoriaPorNombre($datosCategoria['nombre'])) {
+            // Validar descripción única si se está cambiando
+            if (isset($datosCategoria['descripcion']) && 
+                $datosCategoria['descripcion'] !== $categoria->getDescripcion()) {
+                if ($this->existeCategoriaPorDescripcion($datosCategoria['descripcion'])) {
                     return [
                         'exito' => false,
-                        'mensaje' => 'Ya existe una categoría con ese nombre',
+                        'mensaje' => 'Ya existe una categoría con esa descripción',
                         'datos' => null
                     ];
                 }
             }
 
             // Actualizar campos
-            if (isset($datosCategoria['nombre'])) {
-                $categoria->setNombre($datosCategoria['nombre']);
-            }
             if (isset($datosCategoria['descripcion'])) {
                 $categoria->setDescripcion($datosCategoria['descripcion']);
             }
-            if (isset($datosCategoria['estado'])) {
-                $categoria->setEstado($datosCategoria['estado']);
+            if (isset($datosCategoria['esActivo'])) {
+                $categoria->setEsActivo($datosCategoria['esActivo']);
             }
 
-            $categoriaActualizada = $this->categoriaRepository->actualizar($categoria);
+            $resultado = $this->categoriaRepository->update($categoria);
+
+            if ($resultado) {
+                $categoriaActualizada = $this->categoriaRepository->findById($id);
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Categoría actualizada exitosamente',
+                    'datos' => $categoriaActualizada->toArray()
+                ];
+            }
 
             return [
-                'exito' => true,
-                'mensaje' => 'Categoría actualizada exitosamente',
-                'datos' => $categoriaActualizada->toArray()
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar la categoría',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
@@ -208,26 +199,17 @@ class CategoriaService
     }
 
     /**
-     * Eliminar categoría
+     * Eliminar categoría (soft delete)
      */
     public function eliminarCategoria(int $id): array
     {
         try {
-            // Verificar que no tenga productos asociados
-            if ($this->tieneProductosAsociados($id)) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'No se puede eliminar la categoría porque tiene productos asociados',
-                    'datos' => null
-                ];
-            }
-
-            $resultado = $this->categoriaRepository->eliminar($id);
+            $resultado = $this->categoriaRepository->delete($id);
 
             if ($resultado) {
                 return [
                     'exito' => true,
-                    'mensaje' => 'Categoría eliminada exitosamente',
+                    'mensaje' => 'Categoría desactivada exitosamente',
                     'datos' => null
                 ];
             }
@@ -248,18 +230,48 @@ class CategoriaService
     }
 
     /**
+     * Activar categoría
+     */
+    public function activarCategoria(int $id): array
+    {
+        try {
+            $resultado = $this->categoriaRepository->activate($id);
+
+            if ($resultado) {
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Categoría activada exitosamente',
+                    'datos' => null
+                ];
+            }
+
+            return [
+                'exito' => false,
+                'mensaje' => 'No se pudo activar la categoría',
+                'datos' => null
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al activar categoría: ' . $e->getMessage(),
+                'datos' => null
+            ];
+        }
+    }
+
+    /**
      * Obtener categorías para select/dropdown
      */
     public function obtenerCategoriasParaSelect(): array
     {
         try {
-            $categorias = $this->categoriaRepository->listarPorEstado('ACTIVO');
+            $categorias = $this->categoriaRepository->findActive();
             
             $categoriasSelect = [];
             foreach ($categorias as $categoria) {
                 $categoriasSelect[] = [
-                    'id' => $categoria->getId(),
-                    'nombre' => $categoria->getNombre(),
+                    'id' => $categoria->getIdCategoria(),
                     'descripcion' => $categoria->getDescripcion()
                 ];
             }
@@ -280,44 +292,18 @@ class CategoriaService
     }
 
     /**
-     * Buscar categorías por nombre
-     */
-    public function buscarCategorias(string $termino): array
-    {
-        try {
-            $categorias = $this->categoriaRepository->buscarPorNombre($termino);
-            
-            return [
-                'exito' => true,
-                'mensaje' => 'Búsqueda completada',
-                'datos' => array_map(fn($categoria) => $categoria->toArray(), $categorias)
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error en búsqueda: ' . $e->getMessage(),
-                'datos' => []
-            ];
-        }
-    }
-
-    /**
      * Obtener estadísticas de categorías
      */
     public function obtenerEstadisticasCategorias(): array
     {
         try {
-            $total = $this->categoriaRepository->contarTotal();
-            $activas = $this->categoriaRepository->contarPorEstado('ACTIVO');
-            $inactivas = $this->categoriaRepository->contarPorEstado('INACTIVO');
+            $todas = $this->categoriaRepository->findAll();
+            $activas = $this->categoriaRepository->findActive();
 
             $estadisticas = [
-                'total_categorias' => $total,
-                'categorias_activas' => $activas,
-                'categorias_inactivas' => $inactivas,
-                'categoria_mas_productos' => null, // Se calculará con ProductoRepository
-                'categoria_menos_productos' => null // Se calculará con ProductoRepository
+                'total_categorias' => count($todas),
+                'categorias_activas' => count($activas),
+                'categorias_inactivas' => count($todas) - count($activas)
             ];
 
             return [
@@ -336,71 +322,18 @@ class CategoriaService
     }
 
     /**
-     * Cambiar estado de categoría
-     */
-    public function cambiarEstadoCategoria(int $id, string $nuevoEstado): array
-    {
-        try {
-            $categoria = $this->categoriaRepository->obtenerPorId($id);
-
-            if (!$categoria) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Categoría no encontrada',
-                    'datos' => null
-                ];
-            }
-
-            // Validar que si se va a inactivar, no tenga productos activos
-            if ($nuevoEstado === 'INACTIVO') {
-                if ($this->tieneProductosActivos($id)) {
-                    return [
-                        'exito' => false,
-                        'mensaje' => 'No se puede inactivar la categoría porque tiene productos activos',
-                        'datos' => null
-                    ];
-                }
-            }
-
-            $categoria->setEstado($nuevoEstado);
-            $categoriaActualizada = $this->categoriaRepository->actualizar($categoria);
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Estado de categoría actualizado exitosamente',
-                'datos' => $categoriaActualizada->toArray()
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al cambiar estado: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
      * Validar datos de categoría
      */
     public function validarDatosCategoria(array $datos): array
     {
         $errores = [];
 
-        if (empty($datos['nombre'])) {
-            $errores[] = 'El nombre es requerido';
-        } elseif (strlen($datos['nombre']) < 2) {
-            $errores[] = 'El nombre debe tener al menos 2 caracteres';
-        } elseif (strlen($datos['nombre']) > 100) {
-            $errores[] = 'El nombre no puede tener más de 100 caracteres';
-        }
-
-        if (isset($datos['descripcion']) && strlen($datos['descripcion']) > 500) {
-            $errores[] = 'La descripción no puede tener más de 500 caracteres';
-        }
-
-        if (isset($datos['estado']) && !in_array($datos['estado'], ['ACTIVO', 'INACTIVO'])) {
-            $errores[] = 'El estado debe ser ACTIVO o INACTIVO';
+        if (empty($datos['descripcion'])) {
+            $errores[] = 'La descripción es requerida';
+        } elseif (strlen($datos['descripcion']) < 2) {
+            $errores[] = 'La descripción debe tener al menos 2 caracteres';
+        } elseif (strlen($datos['descripcion']) > 100) {
+            $errores[] = 'La descripción no puede tener más de 100 caracteres';
         }
 
         return [
@@ -410,43 +343,20 @@ class CategoriaService
     }
 
     /**
-     * Verificar si existe categoría por nombre
+     * Verificar si existe categoría por descripción
      */
-    private function existeCategoriaPorNombre(string $nombre): bool
+    private function existeCategoriaPorDescripcion(string $descripcion): bool
     {
         try {
-            $categoria = $this->categoriaRepository->obtenerPorNombre($nombre);
-            return $categoria !== null;
-        } catch (Exception $e) {
-            return false;
-        }
-    }
-
-    /**
-     * Verificar si la categoría tiene productos asociados
-     */
-    private function tieneProductosAsociados(int $categoriaId): bool
-    {
-        try {
-            // Esta lógica se implementará cuando tengamos ProductoRepository
-            // Por ahora retornamos false
+            $categorias = $this->categoriaRepository->findAll();
+            foreach ($categorias as $categoria) {
+                if (strtolower($categoria->getDescripcion()) === strtolower($descripcion)) {
+                    return true;
+                }
+            }
             return false;
         } catch (Exception $e) {
-            return true; // Por seguridad
-        }
-    }
-
-    /**
-     * Verificar si la categoría tiene productos activos
-     */
-    private function tieneProductosActivos(int $categoriaId): bool
-    {
-        try {
-            // Esta lógica se implementará cuando tengamos ProductoRepository
-            // Por ahora retornamos false
             return false;
-        } catch (Exception $e) {
-            return true; // Por seguridad
         }
     }
 }

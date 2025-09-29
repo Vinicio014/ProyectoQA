@@ -22,16 +22,13 @@ class RolRepository
     public function create(RolEntity $rol): ?RolEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (nombre, descripcion, activo, fecha_creacion) 
-                    VALUES (:nombre, :descripcion, :activo, NOW())";
-            
-            $params = [
-                'nombre' => $rol->getNombre(),
+            $data = [
                 'descripcion' => $rol->getDescripcion(),
-                'activo' => $rol->isActivo() ? 1 : 0
+                'esActivo' => $rol->getEsActivo() ? 1 : 0
+                // fechaRegistro se genera automáticamente con DEFAULT CURRENT_TIMESTAMP
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -50,7 +47,10 @@ class RolRepository
     public function findById(int $id): ?RolEntity
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE id = :id";
+            $sql = "SELECT idRol, descripcion, esActivo, fechaRegistro 
+                    FROM {$this->table} 
+                    WHERE idRol = :id";
+            
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -61,17 +61,20 @@ class RolRepository
     }
 
     /**
-     * Obtener rol por nombre
+     * Obtener rol por descripción
      */
-    public function findByName(string $nombre): ?RolEntity
+    public function findByDescripcion(string $descripcion): ?RolEntity
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE nombre = :nombre";
-            $result = $this->connectionManager->selectOne($sql, ['nombre' => $nombre]);
+            $sql = "SELECT idRol, descripcion, esActivo, fechaRegistro 
+                    FROM {$this->table} 
+                    WHERE descripcion = :descripcion";
+            
+            $result = $this->connectionManager->selectOne($sql, ['descripcion' => $descripcion]);
             
             return $result ? $this->mapToEntity($result) : null;
         } catch (Exception $e) {
-            error_log("Error finding rol by name: " . $e->getMessage());
+            error_log("Error finding rol by descripcion: " . $e->getMessage());
             return null;
         }
     }
@@ -82,8 +85,11 @@ class RolRepository
     public function findAll(): array
     {
         try {
-            $sql = "SELECT * FROM {$this->table} ORDER BY nombre";
-            $results = $this->connectionManager->selectAll($sql);
+            $sql = "SELECT idRol, descripcion, esActivo, fechaRegistro 
+                    FROM {$this->table} 
+                    ORDER BY descripcion";
+            
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -98,8 +104,12 @@ class RolRepository
     public function findActive(): array
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE activo = 1 ORDER BY nombre";
-            $results = $this->connectionManager->selectAll($sql);
+            $sql = "SELECT idRol, descripcion, esActivo, fechaRegistro 
+                    FROM {$this->table} 
+                    WHERE esActivo = 1 
+                    ORDER BY descripcion";
+            
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -114,19 +124,15 @@ class RolRepository
     public function update(RolEntity $rol): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET nombre = :nombre, descripcion = :descripcion, activo = :activo,
-                        fecha_modificacion = NOW()
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $rol->getId(),
-                'nombre' => $rol->getNombre(),
+            $data = [
                 'descripcion' => $rol->getDescripcion(),
-                'activo' => $rol->isActivo() ? 1 : 0
+                'esActivo' => $rol->getEsActivo() ? 1 : 0
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idRol = :id";
+            $whereParams = ['id' => $rol->getIdRol()];
+
+            return $this->connectionManager->update($this->table, $data, $where, $whereParams);
         } catch (Exception $e) {
             error_log("Error updating rol: " . $e->getMessage());
             return false;
@@ -139,8 +145,11 @@ class RolRepository
     public function delete(int $id): bool
     {
         try {
-            $sql = "UPDATE {$this->table} SET activo = 0, fecha_modificacion = NOW() WHERE id = :id";
-            return $this->connectionManager->update($sql, ['id' => $id]);
+            $data = ['esActivo' => 0];
+            $where = "idRol = :id";
+            $whereParams = ['id' => $id];
+            
+            return $this->connectionManager->update($this->table, $data, $where, $whereParams);
         } catch (Exception $e) {
             error_log("Error deleting rol: " . $e->getMessage());
             return false;
@@ -148,13 +157,37 @@ class RolRepository
     }
 
     /**
-     * Verificar si existe un rol por nombre
+     * Activar rol
      */
-    public function existsByName(string $nombre): bool
+    public function activate(int $id): bool
     {
         try {
-            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE nombre = :nombre";
-            $result = $this->connectionManager->selectOne($sql, ['nombre' => $nombre]);
+            $data = ['esActivo' => 1];
+            $where = "idRol = :id";
+            $whereParams = ['id' => $id];
+            
+            return $this->connectionManager->update($this->table, $data, $where, $whereParams);
+        } catch (Exception $e) {
+            error_log("Error activating rol: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Verificar si existe un rol por descripción
+     */
+    public function existsByDescripcion(string $descripcion, ?int $excludeId = null): bool
+    {
+        try {
+            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE descripcion = :descripcion";
+            $params = ['descripcion' => $descripcion];
+            
+            if ($excludeId !== null) {
+                $sql .= " AND idRol != :excludeId";
+                $params['excludeId'] = $excludeId;
+            }
+            
+            $result = $this->connectionManager->selectOne($sql, $params);
             
             return ($result['count'] ?? 0) > 0;
         } catch (Exception $e) {
@@ -169,7 +202,7 @@ class RolRepository
     public function countActive(): int
     {
         try {
-            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE activo = 1";
+            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE esActivo = 1";
             $result = $this->connectionManager->selectOne($sql);
             
             return (int)($result['count'] ?? 0);
@@ -180,17 +213,79 @@ class RolRepository
     }
 
     /**
+     * Contar total de roles
+     */
+    public function count(): int
+    {
+        try {
+            $sql = "SELECT COUNT(*) as count FROM {$this->table}";
+            $result = $this->connectionManager->selectOne($sql);
+            
+            return (int)($result['count'] ?? 0);
+        } catch (Exception $e) {
+            error_log("Error counting roles: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Obtener roles con cantidad de usuarios asignados
+     */
+    public function findAllWithUserCount(): array
+    {
+        try {
+            $sql = "SELECT r.idRol, r.descripcion, r.esActivo, r.fechaRegistro,
+                           COUNT(u.idUsuario) as total_usuarios
+                    FROM {$this->table} r
+                    LEFT JOIN usuario u ON r.idRol = u.idRol
+                    GROUP BY r.idRol, r.descripcion, r.esActivo, r.fechaRegistro
+                    ORDER BY r.descripcion";
+            
+            $results = $this->connectionManager->select($sql);
+            
+            $roles = [];
+            foreach ($results as $data) {
+                $rol = $this->mapToEntity($data);
+                $roles[] = [
+                    'rol' => $rol,
+                    'total_usuarios' => (int)$data['total_usuarios']
+                ];
+            }
+            
+            return $roles;
+        } catch (Exception $e) {
+            error_log("Error finding roles with user count: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Mapear datos de BD a entidad
      */
     private function mapToEntity(array $data): RolEntity
     {
         $rol = new RolEntity();
-        $rol->setId($data['id']);
-        $rol->setNombre($data['nombre']);
+        $rol->setIdRol((int)$data['idRol']);
         $rol->setDescripcion($data['descripcion']);
-        $rol->setActivo((bool)$data['activo']);
-        $rol->setFechaCreacion($data['fecha_creacion']);
-        $rol->setFechaModificacion($data['fecha_modificacion']);
+        
+        // Manejo del tipo bit de MySQL
+        if (isset($data['esActivo'])) {
+            $esActivo = $data['esActivo'];
+            if (is_string($esActivo)) {
+                $rol->setEsActivo($esActivo !== "\x00" && $esActivo !== '0');
+            } else {
+                $rol->setEsActivo((bool)$esActivo);
+            }
+        }
+        
+        // Manejo de DateTime
+        if (isset($data['fechaRegistro'])) {
+            try {
+                $rol->setFechaRegistro(new \DateTime($data['fechaRegistro']));
+            } catch (\Exception $e) {
+                $rol->setFechaRegistro(new \DateTime());
+            }
+        }
         
         return $rol;
     }

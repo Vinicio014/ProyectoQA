@@ -1,11 +1,11 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\DetalleVentaEntity;
-use Proyecto\Repositories\DetalleVentaRepository;
-use Proyecto\Repositories\VentaRepository;
-use Proyecto\Repositories\ProductoRepository;
+use App\Entities\DetalleVentaEntity;
+use App\Repositories\DetalleVentaRepository;
+use App\Repositories\VentaRepository;
+use App\Repositories\ProductoRepository;
 use Exception;
 
 /**
@@ -35,7 +35,7 @@ class DetalleVentaService
     {
         try {
             // Validar que la venta exista
-            $venta = $this->ventaRepository->obtenerPorId($datosDetalle['venta_id']);
+            $venta = $this->ventaRepository->findById($datosDetalle['idVenta']);
             if (!$venta) {
                 return [
                     'exito' => false,
@@ -45,7 +45,7 @@ class DetalleVentaService
             }
 
             // Validar que el producto exista
-            $producto = $this->productoRepository->obtenerPorId($datosDetalle['producto_id']);
+            $producto = $this->productoRepository->findById($datosDetalle['idProducto']);
             if (!$producto) {
                 return [
                     'exito' => false,
@@ -63,19 +63,38 @@ class DetalleVentaService
                 ];
             }
 
-            $detalle = new DetalleVentaEntity();
-            $detalle->setVentaId($datosDetalle['venta_id']);
-            $detalle->setProductoId($datosDetalle['producto_id']);
-            $detalle->setCantidad($datosDetalle['cantidad']);
-            $detalle->setPrecioUnitario($datosDetalle['precio_unitario'] ?? $producto->getPrecio());
-            $detalle->setSubtotal($detalle->getPrecioUnitario() * $detalle->getCantidad());
+            // Validar stock disponible
+            if ($producto->getStock() < $datosDetalle['cantidad']) {
+                return [
+                    'exito' => false,
+                    'mensaje' => 'Stock insuficiente. Disponible: ' . $producto->getStock(),
+                    'datos' => null
+                ];
+            }
 
-            $detalleCreado = $this->detalleVentaRepository->crear($detalle);
+            $detalle = new DetalleVentaEntity();
+            $detalle->setIdVenta($datosDetalle['idVenta']);
+            $detalle->setIdProducto($datosDetalle['idProducto']);
+            $detalle->setCantidad($datosDetalle['cantidad']);
+            
+            // Calcular subtotal (cantidad * precio del producto)
+            $subtotal = $datosDetalle['cantidad'] * $producto->getPrecioUnitario();
+            $detalle->setSubTotal($subtotal);
+
+            $detalleCreado = $this->detalleVentaRepository->create($detalle);
+
+            // Reducir stock del producto
+            if ($detalleCreado) {
+                $this->productoRepository->reduceStock(
+                    $datosDetalle['idProducto'], 
+                    $datosDetalle['cantidad']
+                );
+            }
 
             return [
                 'exito' => true,
                 'mensaje' => 'Detalle de venta creado exitosamente',
-                'datos' => $this->formatearDetalleVenta($detalleCreado)
+                'datos' => $detalleCreado ? $detalleCreado->toArray() : null
             ];
 
         } catch (Exception $e) {
@@ -93,7 +112,7 @@ class DetalleVentaService
     public function obtenerDetallePorId(int $id): array
     {
         try {
-            $detalle = $this->detalleVentaRepository->obtenerPorId($id);
+            $detalle = $this->detalleVentaRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -106,7 +125,7 @@ class DetalleVentaService
             return [
                 'exito' => true,
                 'mensaje' => 'Detalle encontrado',
-                'datos' => $this->formatearDetalleVenta($detalle)
+                'datos' => $detalle->toArray()
             ];
 
         } catch (Exception $e) {
@@ -124,7 +143,7 @@ class DetalleVentaService
     public function obtenerDetallesPorVenta(int $ventaId): array
     {
         try {
-            $venta = $this->ventaRepository->obtenerPorId($ventaId);
+            $venta = $this->ventaRepository->findById($ventaId);
             if (!$venta) {
                 return [
                     'exito' => false,
@@ -133,12 +152,12 @@ class DetalleVentaService
                 ];
             }
 
-            $detalles = $this->detalleVentaRepository->obtenerPorVenta($ventaId);
+            $detalles = $this->detalleVentaRepository->findByVenta($ventaId);
             
             return [
                 'exito' => true,
                 'mensaje' => 'Detalles de venta obtenidos',
-                'datos' => array_map([$this, 'formatearDetalleVenta'], $detalles)
+                'datos' => array_map(fn($d) => $d->toArray(), $detalles)
             ];
 
         } catch (Exception $e) {
@@ -156,7 +175,7 @@ class DetalleVentaService
     public function actualizarDetalleVenta(int $id, array $datosDetalle): array
     {
         try {
-            $detalle = $this->detalleVentaRepository->obtenerPorId($id);
+            $detalle = $this->detalleVentaRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -166,7 +185,9 @@ class DetalleVentaService
                 ];
             }
 
-            // Actualizar campos
+            $cantidadAnterior = $detalle->getCantidad();
+
+            // Actualizar cantidad
             if (isset($datosDetalle['cantidad'])) {
                 if ($datosDetalle['cantidad'] <= 0) {
                     return [
@@ -175,29 +196,50 @@ class DetalleVentaService
                         'datos' => null
                     ];
                 }
-                $detalle->setCantidad($datosDetalle['cantidad']);
-            }
-
-            if (isset($datosDetalle['precio_unitario'])) {
-                if ($datosDetalle['precio_unitario'] <= 0) {
+                
+                // Validar stock
+                $producto = $this->productoRepository->findById($detalle->getIdProducto());
+                $diferencia = $datosDetalle['cantidad'] - $cantidadAnterior;
+                
+                if ($diferencia > 0 && $producto->getStock() < $diferencia) {
                     return [
                         'exito' => false,
-                        'mensaje' => 'El precio unitario debe ser mayor que 0',
+                        'mensaje' => 'Stock insuficiente para el incremento',
                         'datos' => null
                     ];
                 }
-                $detalle->setPrecioUnitario($datosDetalle['precio_unitario']);
+                
+                $detalle->setCantidad($datosDetalle['cantidad']);
+                
+                // Recalcular subtotal
+                $detalle->setSubTotal($datosDetalle['cantidad'] * $producto->getPrecioUnitario());
             }
 
-            // Recalcular subtotal
-            $detalle->setSubtotal($detalle->getPrecioUnitario() * $detalle->getCantidad());
+            $resultado = $this->detalleVentaRepository->update($detalle);
 
-            $detalleActualizado = $this->detalleVentaRepository->actualizar($detalle);
+            if ($resultado) {
+                // Ajustar stock si cambió la cantidad
+                if (isset($datosDetalle['cantidad'])) {
+                    $diferencia = $datosDetalle['cantidad'] - $cantidadAnterior;
+                    if ($diferencia > 0) {
+                        $this->productoRepository->reduceStock($detalle->getIdProducto(), $diferencia);
+                    } elseif ($diferencia < 0) {
+                        $this->productoRepository->increaseStock($detalle->getIdProducto(), abs($diferencia));
+                    }
+                }
+
+                $detalleActualizado = $this->detalleVentaRepository->findById($id);
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Detalle de venta actualizado exitosamente',
+                    'datos' => $detalleActualizado->toArray()
+                ];
+            }
 
             return [
-                'exito' => true,
-                'mensaje' => 'Detalle de venta actualizado exitosamente',
-                'datos' => $this->formatearDetalleVenta($detalleActualizado)
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar el detalle',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
@@ -215,7 +257,7 @@ class DetalleVentaService
     public function eliminarDetalleVenta(int $id): array
     {
         try {
-            $detalle = $this->detalleVentaRepository->obtenerPorId($id);
+            $detalle = $this->detalleVentaRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -225,17 +267,13 @@ class DetalleVentaService
                 ];
             }
 
-            // Verificar que la venta no esté completada o anulada
-            $venta = $this->ventaRepository->obtenerPorId($detalle->getVentaId());
-            if ($venta && in_array($venta->getEstado(), ['COMPLETADA', 'ANULADA'])) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'No se puede eliminar detalle de una venta completada o anulada',
-                    'datos' => null
-                ];
-            }
+            // Devolver stock antes de eliminar
+            $this->productoRepository->increaseStock(
+                $detalle->getIdProducto(), 
+                $detalle->getCantidad()
+            );
 
-            $resultado = $this->detalleVentaRepository->eliminar($id);
+            $resultado = $this->detalleVentaRepository->delete($id);
 
             if ($resultado) {
                 return [
@@ -263,10 +301,10 @@ class DetalleVentaService
     /**
      * Obtener productos más vendidos
      */
-    public function obtenerProductosMasVendidos(int $limite = 10, array $filtros = []): array
+    public function obtenerProductosMasVendidos(int $limite = 10): array
     {
         try {
-            $productos = $this->detalleVentaRepository->obtenerProductosMasVendidos($limite, $filtros);
+            $productos = $this->detalleVentaRepository->getMostSoldProducts($limite);
             
             return [
                 'exito' => true,
@@ -284,144 +322,17 @@ class DetalleVentaService
     }
 
     /**
-     * Obtener estadísticas de productos vendidos
-     */
-    public function obtenerEstadisticasProductosVendidos(array $filtros = []): array
-    {
-        try {
-            $estadisticas = [
-                'total_items_vendidos' => $this->detalleVentaRepository->contarTotalItems($filtros),
-                'cantidad_total_vendida' => $this->detalleVentaRepository->calcularCantidadTotal($filtros),
-                'monto_total_vendido' => $this->detalleVentaRepository->calcularMontoTotal($filtros),
-                'productos_mas_vendidos' => $this->detalleVentaRepository->obtenerProductosMasVendidos(5, $filtros),
-                'productos_menos_vendidos' => $this->detalleVentaRepository->obtenerProductosMenosVendidos(5, $filtros),
-                'promedio_cantidad_por_venta' => $this->detalleVentaRepository->calcularPromedioCantidad($filtros),
-                'promedio_precio_unitario' => $this->detalleVentaRepository->calcularPromedioPrecio($filtros)
-            ];
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Estadísticas obtenidas exitosamente',
-                'datos' => $estadisticas
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener estadísticas: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
-     * Obtener ventas de un producto específico
-     */
-    public function obtenerVentasProducto(int $productoId, array $filtros = []): array
-    {
-        try {
-            $producto = $this->productoRepository->obtenerPorId($productoId);
-            if (!$producto) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Producto no encontrado',
-                    'datos' => []
-                ];
-            }
-
-            $detalles = $this->detalleVentaRepository->obtenerPorProducto($productoId, $filtros);
-            
-            return [
-                'exito' => true,
-                'mensaje' => 'Ventas del producto obtenidas',
-                'datos' => [
-                    'producto' => [
-                        'id' => $producto->getId(),
-                        'nombre' => $producto->getNombre(),
-                        'codigo' => $producto->getCodigo()
-                    ],
-                    'ventas' => array_map([$this, 'formatearDetalleVenta'], $detalles),
-                    'resumen' => [
-                        'total_vendido' => array_sum(array_map(fn($d) => $d->getCantidad(), $detalles)),
-                        'monto_total' => array_sum(array_map(fn($d) => $d->getSubtotal(), $detalles)),
-                        'numero_ventas' => count($detalles)
-                    ]
-                ]
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener ventas del producto: ' . $e->getMessage(),
-                'datos' => []
-            ];
-        }
-    }
-
-    /**
-     * Calcular margen de ganancia por detalle
-     */
-    public function calcularMargenGanancia(int $detalleId): array
-    {
-        try {
-            $detalle = $this->detalleVentaRepository->obtenerPorId($detalleId);
-            
-            if (!$detalle) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Detalle no encontrado',
-                    'datos' => null
-                ];
-            }
-
-            $producto = $this->productoRepository->obtenerPorId($detalle->getProductoId());
-            
-            if (!$producto || $producto->getCosto() <= 0) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'No se puede calcular margen sin costo del producto',
-                    'datos' => null
-                ];
-            }
-
-            $costoTotal = $producto->getCosto() * $detalle->getCantidad();
-            $ventaTotal = $detalle->getSubtotal();
-            $ganancia = $ventaTotal - $costoTotal;
-            $margenPorcentaje = ($ganancia / $costoTotal) * 100;
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Margen calculado exitosamente',
-                'datos' => [
-                    'detalle_id' => $detalleId,
-                    'costo_total' => $costoTotal,
-                    'venta_total' => $ventaTotal,
-                    'ganancia' => $ganancia,
-                    'margen_porcentaje' => round($margenPorcentaje, 2)
-                ]
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al calcular margen: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
      * Validar datos de detalle de venta
      */
     public function validarDatosDetalle(array $datos): array
     {
         $errores = [];
 
-        if (empty($datos['venta_id']) || $datos['venta_id'] <= 0) {
+        if (empty($datos['idVenta']) || $datos['idVenta'] <= 0) {
             $errores[] = 'La venta es requerida';
         }
 
-        if (empty($datos['producto_id']) || $datos['producto_id'] <= 0) {
+        if (empty($datos['idProducto']) || $datos['idProducto'] <= 0) {
             $errores[] = 'El producto es requerido';
         }
 
@@ -429,63 +340,9 @@ class DetalleVentaService
             $errores[] = 'La cantidad debe ser mayor que 0';
         }
 
-        if (isset($datos['precio_unitario']) && $datos['precio_unitario'] <= 0) {
-            $errores[] = 'El precio unitario debe ser mayor que 0';
-        }
-
         return [
             'valido' => empty($errores),
             'errores' => $errores
         ];
-    }
-
-    /**
-     * Formatear detalle de venta con información completa
-     */
-    private function formatearDetalleVenta(DetalleVentaEntity $detalle): array
-    {
-        $datos = $detalle->toArray();
-        
-        // Agregar información del producto
-        try {
-            $producto = $this->productoRepository->obtenerPorId($detalle->getProductoId());
-            if ($producto) {
-                $datos['producto'] = [
-                    'id' => $producto->getId(),
-                    'nombre' => $producto->getNombre(),
-                    'codigo' => $producto->getCodigo(),
-                    'marca' => $producto->getMarca(),
-                    'color' => $producto->getColor(),
-                    'costo' => $producto->getCosto()
-                ];
-                
-                // Calcular margen si hay costo
-                if ($producto->getCosto() > 0) {
-                    $costoTotal = $producto->getCosto() * $detalle->getCantidad();
-                    $ganancia = $detalle->getSubtotal() - $costoTotal;
-                    $datos['margen_ganancia'] = ($ganancia / $costoTotal) * 100;
-                    $datos['ganancia_total'] = $ganancia;
-                }
-            }
-        } catch (Exception $e) {
-            $datos['producto'] = null;
-        }
-
-        // Agregar información básica de la venta
-        try {
-            $venta = $this->ventaRepository->obtenerPorId($detalle->getVentaId());
-            if ($venta) {
-                $datos['venta'] = [
-                    'id' => $venta->getId(),
-                    'fecha' => $venta->getFecha()->format('Y-m-d'),
-                    'estado' => $venta->getEstado(),
-                    'cliente_id' => $venta->getClienteId()
-                ];
-            }
-        } catch (Exception $e) {
-            $datos['venta'] = null;
-        }
-
-        return $datos;
     }
 }

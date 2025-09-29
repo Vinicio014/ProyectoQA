@@ -22,20 +22,16 @@ class PedidoRepository
     public function create(PedidoEntity $pedido): ?PedidoEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (cliente_id, fecha_pedido, fecha_entrega, 
-                    estado, observaciones, total) 
-                    VALUES (:cliente_id, :fecha_pedido, :fecha_entrega, :estado, :observaciones, :total)";
-            
-            $params = [
-                'cliente_id' => $pedido->getClienteId(),
-                'fecha_pedido' => $pedido->getFechaPedido(),
-                'fecha_entrega' => $pedido->getFechaEntrega(),
-                'estado' => $pedido->getEstado(),
-                'observaciones' => $pedido->getObservaciones(),
-                'total' => $pedido->getTotal()
+            $data = [
+                'estado_pedido' => $pedido->getEstadoPedido(),
+                'costo_total_pedido' => 0.0, // Se calculará después
+                'idCliente' => $pedido->getIdCliente(),
+                'fecha_entrega' => $pedido->getFechaEntrega() ? $pedido->getFechaEntrega()->format('Y-m-d H:i:s') : null,
+                'monto_pagado' => $pedido->getMontoPagado(),
+                'estado_pago' => $pedido->getEstadoPago()
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -55,10 +51,11 @@ class PedidoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           c.primer_nombre as cliente_primer_nombre, 
+                           c.primer_apellido as cliente_primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id 
-                    WHERE p.id = :id";
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente 
+                    WHERE p.idPedido = :id";
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -75,11 +72,12 @@ class PedidoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           c.primer_nombre as cliente_primer_nombre, 
+                           c.primer_apellido as cliente_primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id 
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente 
                     ORDER BY p.fecha_pedido DESC";
-            $results = $this->connectionManager->selectAll($sql);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -95,12 +93,13 @@ class PedidoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           c.primer_nombre as cliente_primer_nombre, 
+                           c.primer_apellido as cliente_primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id 
-                    WHERE p.cliente_id = :cliente_id
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente 
+                    WHERE p.idCliente = :cliente_id
                     ORDER BY p.fecha_pedido DESC";
-            $results = $this->connectionManager->selectAll($sql, ['cliente_id' => $clienteId]);
+            $results = $this->connectionManager->select($sql, ['cliente_id' => $clienteId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -116,12 +115,13 @@ class PedidoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           c.primer_nombre as cliente_primer_nombre, 
+                           c.primer_apellido as cliente_primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id 
-                    WHERE p.estado = :estado
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente 
+                    WHERE p.estado_pedido = :estado
                     ORDER BY p.fecha_pedido DESC";
-            $results = $this->connectionManager->selectAll($sql, ['estado' => $estado]);
+            $results = $this->connectionManager->select($sql, ['estado' => $estado]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -137,12 +137,13 @@ class PedidoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           c.primer_nombre as cliente_primer_nombre, 
+                           c.primer_apellido as cliente_primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id 
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente 
                     WHERE DATE(p.fecha_pedido) = :fecha
                     ORDER BY p.fecha_pedido DESC";
-            $results = $this->connectionManager->selectAll($sql, ['fecha' => $fecha]);
+            $results = $this->connectionManager->select($sql, ['fecha' => $fecha]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -158,14 +159,15 @@ class PedidoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           c.primer_nombre as cliente_primer_nombre, 
+                           c.primer_apellido as cliente_primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id 
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente 
                     WHERE DATE(p.fecha_pedido) BETWEEN :fecha_inicio AND :fecha_fin
                     ORDER BY p.fecha_pedido DESC";
             
             $params = ['fecha_inicio' => $fechaInicio, 'fecha_fin' => $fechaFin];
-            $results = $this->connectionManager->selectAll($sql, $params);
+            $results = $this->connectionManager->select($sql, $params);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -180,48 +182,9 @@ class PedidoRepository
     public function findPending(): array
     {
         try {
-            return $this->findByStatus('PENDIENTE');
+            return $this->findByStatus('Pendiente');
         } catch (Exception $e) {
             error_log("Error finding pending pedidos: " . $e->getMessage());
-            return [];
-        }
-    }
-
-    /**
-     * Obtener pedidos en proceso
-     */
-    public function findInProcess(): array
-    {
-        try {
-            return $this->findByStatus('EN_PROCESO');
-        } catch (Exception $e) {
-            error_log("Error finding in process pedidos: " . $e->getMessage());
-            return [];
-        }
-    }
-
-    /**
-     * Obtener pedidos completados
-     */
-    public function findCompleted(): array
-    {
-        try {
-            return $this->findByStatus('COMPLETADO');
-        } catch (Exception $e) {
-            error_log("Error finding completed pedidos: " . $e->getMessage());
-            return [];
-        }
-    }
-
-    /**
-     * Obtener pedidos cancelados
-     */
-    public function findCanceled(): array
-    {
-        try {
-            return $this->findByStatus('CANCELADO');
-        } catch (Exception $e) {
-            error_log("Error finding canceled pedidos: " . $e->getMessage());
             return [];
         }
     }
@@ -232,23 +195,19 @@ class PedidoRepository
     public function update(PedidoEntity $pedido): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET cliente_id = :cliente_id, fecha_pedido = :fecha_pedido, 
-                        fecha_entrega = :fecha_entrega, estado = :estado, 
-                        observaciones = :observaciones, total = :total
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $pedido->getId(),
-                'cliente_id' => $pedido->getClienteId(),
-                'fecha_pedido' => $pedido->getFechaPedido(),
-                'fecha_entrega' => $pedido->getFechaEntrega(),
-                'estado' => $pedido->getEstado(),
-                'observaciones' => $pedido->getObservaciones(),
-                'total' => $pedido->getTotal()
+            $data = [
+                'estado_pedido' => $pedido->getEstadoPedido(),
+                'idCliente' => $pedido->getIdCliente(),
+                'fecha_entrega' => $pedido->getFechaEntrega() ? $pedido->getFechaEntrega()->format('Y-m-d H:i:s') : null,
+                'monto_pagado' => $pedido->getMontoPagado(),
+                'estado_pago' => $pedido->getEstadoPago()
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idPedido = :id";
+            $whereParams = ['id' => $pedido->getIdPedido()];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating pedido: " . $e->getMessage());
             return false;
@@ -261,10 +220,32 @@ class PedidoRepository
     public function updateStatus(int $id, string $nuevoEstado): bool
     {
         try {
-            $sql = "UPDATE {$this->table} SET estado = :estado WHERE id = :id";
-            return $this->connectionManager->update($sql, ['id' => $id, 'estado' => $nuevoEstado]);
+            $data = ['estado_pedido' => $nuevoEstado];
+            $where = "idPedido = :id";
+            $whereParams = ['id' => $id];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating pedido status: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Actualizar costo total del pedido
+     */
+    public function updateCostoTotal(int $id, float $costoTotal): bool
+    {
+        try {
+            $data = ['costo_total_pedido' => $costoTotal];
+            $where = "idPedido = :id";
+            $whereParams = ['id' => $id];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
+        } catch (Exception $e) {
+            error_log("Error updating pedido costo total: " . $e->getMessage());
             return false;
         }
     }
@@ -275,8 +256,11 @@ class PedidoRepository
     public function delete(int $id): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE id = :id";
-            return $this->connectionManager->delete($sql, ['id' => $id]);
+            $where = "idPedido = :id";
+            $params = ['id' => $id];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting pedido: " . $e->getMessage());
             return false;
@@ -290,13 +274,14 @@ class PedidoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           c.primer_nombre as cliente_primer_nombre, 
+                           c.primer_apellido as cliente_primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id 
-                    WHERE p.fecha_entrega BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL :days DAY)
-                    AND p.estado IN ('PENDIENTE', 'EN_PROCESO')
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente 
+                    WHERE p.fecha_entrega BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL {$days} DAY)
+                    AND p.estado_pedido IN ('Pendiente')
                     ORDER BY p.fecha_entrega ASC";
-            $results = $this->connectionManager->selectAll($sql, ['days' => $days]);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -312,13 +297,14 @@ class PedidoRepository
     {
         try {
             $sql = "SELECT p.*, 
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           c.primer_nombre as cliente_primer_nombre, 
+                           c.primer_apellido as cliente_primer_apellido
                     FROM {$this->table} p 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id 
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente 
                     WHERE p.fecha_entrega < NOW()
-                    AND p.estado IN ('PENDIENTE', 'EN_PROCESO')
+                    AND p.estado_pedido = 'Pendiente'
                     ORDER BY p.fecha_entrega ASC";
-            $results = $this->connectionManager->selectAll($sql);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -333,14 +319,14 @@ class PedidoRepository
     public function countByStatus(): array
     {
         try {
-            $sql = "SELECT estado, COUNT(*) as count 
+            $sql = "SELECT estado_pedido, COUNT(*) as count 
                     FROM {$this->table} 
-                    GROUP BY estado";
-            $results = $this->connectionManager->selectAll($sql);
+                    GROUP BY estado_pedido";
+            $results = $this->connectionManager->select($sql);
             
             $counts = [];
             foreach ($results as $result) {
-                $counts[$result['estado']] = (int)$result['count'];
+                $counts[$result['estado_pedido']] = (int)$result['count'];
             }
             
             return $counts;
@@ -358,12 +344,12 @@ class PedidoRepository
         try {
             $sql = "SELECT 
                         COUNT(*) as total_pedidos,
-                        SUM(total) as total_valor,
-                        AVG(total) as promedio_pedido,
-                        COUNT(CASE WHEN estado = 'PENDIENTE' THEN 1 END) as pendientes,
-                        COUNT(CASE WHEN estado = 'EN_PROCESO' THEN 1 END) as en_proceso,
-                        COUNT(CASE WHEN estado = 'COMPLETADO' THEN 1 END) as completados,
-                        COUNT(CASE WHEN estado = 'CANCELADO' THEN 1 END) as cancelados
+                        SUM(costo_total_pedido) as total_valor,
+                        AVG(costo_total_pedido) as promedio_pedido,
+                        SUM(monto_pagado) as total_pagado,
+                        COUNT(CASE WHEN estado_pedido = 'Pendiente' THEN 1 END) as pendientes,
+                        COUNT(CASE WHEN estado_pago = 'Pendiente' THEN 1 END) as pago_pendiente,
+                        COUNT(CASE WHEN estado_pago = 'Completo' THEN 1 END) as pago_completo
                     FROM {$this->table} 
                     WHERE DATE(fecha_pedido) BETWEEN :fecha_inicio AND :fecha_fin";
                     
@@ -378,18 +364,64 @@ class PedidoRepository
     }
 
     /**
+     * Contar pedidos por cliente
+     */
+    public function countByCliente(int $clienteId): int
+    {
+        try {
+            return $this->connectionManager->count(
+                $this->table,
+                'idCliente = :cliente_id',
+                ['cliente_id' => $clienteId]
+            );
+        } catch (Exception $e) {
+            error_log("Error counting by cliente: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
      * Mapear datos de BD a entidad
      */
     private function mapToEntity(array $data): PedidoEntity
     {
         $pedido = new PedidoEntity();
-        $pedido->setId($data['id']);
-        $pedido->setClienteId($data['cliente_id']);
-        $pedido->setFechaPedido($data['fecha_pedido']);
-        $pedido->setFechaEntrega($data['fecha_entrega']);
-        $pedido->setEstado($data['estado']);
-        $pedido->setObservaciones($data['observaciones']);
-        $pedido->setTotal($data['total']);
+        
+        if (isset($data['idPedido'])) {
+            $pedido->setIdPedido((int)$data['idPedido']);
+        }
+        
+        if (isset($data['fecha_pedido'])) {
+            try {
+                $pedido->setFechaPedido(new \DateTime($data['fecha_pedido']));
+            } catch (\Exception $e) {
+                $pedido->setFechaPedido(new \DateTime());
+            }
+        }
+        
+        if (isset($data['estado_pedido'])) {
+            $pedido->setEstadoPedido($data['estado_pedido']);
+        }
+        
+        if (isset($data['idCliente'])) {
+            $pedido->setIdCliente((int)$data['idCliente']);
+        }
+        
+        if (isset($data['fecha_entrega']) && $data['fecha_entrega']) {
+            try {
+                $pedido->setFechaEntrega(new \DateTime($data['fecha_entrega']));
+            } catch (\Exception $e) {
+                $pedido->setFechaEntrega(null);
+            }
+        }
+        
+        if (isset($data['monto_pagado'])) {
+            $pedido->setMontoPagado((float)$data['monto_pagado']);
+        }
+        
+        if (isset($data['estado_pago'])) {
+            $pedido->setEstadoPago($data['estado_pago']);
+        }
         
         return $pedido;
     }

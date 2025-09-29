@@ -22,23 +22,18 @@ class DetalleUniformeRepository
     public function create(DetalleUniformeEntity $detalle): ?DetalleUniformeEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (pedido_id, talla, genero, numero_camisola, 
-                    medida_pecho, medida_cintura, medida_cadera, observaciones) 
-                    VALUES (:pedido_id, :talla, :genero, :numero_camisola, 
-                    :medida_pecho, :medida_cintura, :medida_cadera, :observaciones)";
-            
-            $params = [
-                'pedido_id' => $detalle->getPedidoId(),
+            $data = [
+                'id_detalle_pedido' => $detalle->getIdDetallePedido(),
                 'talla' => $detalle->getTalla(),
                 'genero' => $detalle->getGenero(),
+                'nombre_camisola' => $detalle->getNombreCamisola(),
                 'numero_camisola' => $detalle->getNumeroCamisola(),
-                'medida_pecho' => $detalle->getMedidaPecho(),
-                'medida_cintura' => $detalle->getMedidaCintura(),
-                'medida_cadera' => $detalle->getMedidaCadera(),
-                'observaciones' => $detalle->getObservaciones()
+                'nombre_abajo_numero' => $detalle->getNombreAbajo(),
+                'cantidad' => $detalle->getCantidad(),
+                'con_medidas' => $detalle->getConMedidas()
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -58,12 +53,14 @@ class DetalleUniformeRepository
     {
         try {
             $sql = "SELECT du.*, 
-                           p.fecha_pedido, p.estado as pedido_estado,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           dp.id_pedido, dp.cantidad_producto,
+                           p.fecha_pedido, p.estado_pedido,
+                           c.primer_nombre, c.primer_apellido
                     FROM {$this->table} du 
-                    LEFT JOIN pedido p ON du.pedido_id = p.id 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id
-                    WHERE du.id = :id";
+                    LEFT JOIN detalle_pedido dp ON du.id_detalle_pedido = dp.id_detalle_pedido
+                    LEFT JOIN pedido p ON dp.id_pedido = p.idPedido 
+                    LEFT JOIN cliente c ON p.idCliente = c.idCliente
+                    WHERE du.idDetalle_uniforme = :id";
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -74,24 +71,24 @@ class DetalleUniformeRepository
     }
 
     /**
-     * Obtener detalles por pedido
+     * Obtener detalles por detalle de pedido
      */
-    public function findByPedido(int $pedidoId): array
+    public function findByDetallePedido(int $detallePedidoId): array
     {
         try {
             $sql = "SELECT du.*, 
-                           p.fecha_pedido, p.estado as pedido_estado,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           dp.id_pedido, dp.cantidad_producto,
+                           p.fecha_pedido, p.estado_pedido
                     FROM {$this->table} du 
-                    LEFT JOIN pedido p ON du.pedido_id = p.id 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id
-                    WHERE du.pedido_id = :pedido_id
-                    ORDER BY du.id";
-            $results = $this->connectionManager->selectAll($sql, ['pedido_id' => $pedidoId]);
+                    LEFT JOIN detalle_pedido dp ON du.id_detalle_pedido = dp.id_detalle_pedido
+                    LEFT JOIN pedido p ON dp.id_pedido = p.idPedido
+                    WHERE du.id_detalle_pedido = :detalle_pedido_id
+                    ORDER BY du.idDetalle_uniforme";
+            $results = $this->connectionManager->select($sql, ['detalle_pedido_id' => $detallePedidoId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
-            error_log("Error finding detalles by pedido: " . $e->getMessage());
+            error_log("Error finding detalles by detalle pedido: " . $e->getMessage());
             return [];
         }
     }
@@ -99,22 +96,22 @@ class DetalleUniformeRepository
     /**
      * Obtener detalles por talla
      */
-    public function findBySize(string $talla): array
+    public function findByTalla(string $talla): array
     {
         try {
             $sql = "SELECT du.*, 
-                           p.fecha_pedido, p.estado as pedido_estado,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           dp.id_pedido, dp.cantidad_producto,
+                           p.fecha_pedido, p.estado_pedido
                     FROM {$this->table} du 
-                    LEFT JOIN pedido p ON du.pedido_id = p.id 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id
+                    LEFT JOIN detalle_pedido dp ON du.id_detalle_pedido = dp.id_detalle_pedido
+                    LEFT JOIN pedido p ON dp.id_pedido = p.idPedido
                     WHERE du.talla = :talla
                     ORDER BY p.fecha_pedido DESC";
-            $results = $this->connectionManager->selectAll($sql, ['talla' => $talla]);
+            $results = $this->connectionManager->select($sql, ['talla' => $talla]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
-            error_log("Error finding detalles by size: " . $e->getMessage());
+            error_log("Error finding detalles by talla: " . $e->getMessage());
             return [];
         }
     }
@@ -126,14 +123,14 @@ class DetalleUniformeRepository
     {
         try {
             $sql = "SELECT du.*, 
-                           p.fecha_pedido, p.estado as pedido_estado,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           dp.id_pedido, dp.cantidad_producto,
+                           p.fecha_pedido, p.estado_pedido
                     FROM {$this->table} du 
-                    LEFT JOIN pedido p ON du.pedido_id = p.id 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id
+                    LEFT JOIN detalle_pedido dp ON du.id_detalle_pedido = dp.id_detalle_pedido
+                    LEFT JOIN pedido p ON dp.id_pedido = p.idPedido
                     WHERE du.genero = :genero
                     ORDER BY p.fecha_pedido DESC";
-            $results = $this->connectionManager->selectAll($sql, ['genero' => $genero]);
+            $results = $this->connectionManager->select($sql, ['genero' => $genero]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -141,7 +138,25 @@ class DetalleUniformeRepository
             return [];
         }
     }
-
+/**
+ * Obtener detalles de uniforme por talla
+ */
+public function findBySize(string $talla): array
+{
+    try {
+        $sql = "SELECT idDetalle_uniforme, id_detalle_pedido, talla, genero, numero_camisola
+                FROM {$this->table}
+                WHERE talla = :talla
+                ORDER BY id_detalle_pedido";
+        
+        $results = $this->connectionManager->select($sql, ['talla' => $talla]);
+        
+        return array_map([$this, 'mapToEntity'], $results);
+    } catch (Exception $e) {
+        error_log("Error finding detalles uniforme by size: " . $e->getMessage());
+        return [];
+    }
+}
     /**
      * Obtener todos los detalles
      */
@@ -149,13 +164,13 @@ class DetalleUniformeRepository
     {
         try {
             $sql = "SELECT du.*, 
-                           p.fecha_pedido, p.estado as pedido_estado,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           dp.id_pedido, dp.cantidad_producto,
+                           p.fecha_pedido, p.estado_pedido
                     FROM {$this->table} du 
-                    LEFT JOIN pedido p ON du.pedido_id = p.id 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id
-                    ORDER BY p.fecha_pedido DESC, du.id";
-            $results = $this->connectionManager->selectAll($sql);
+                    LEFT JOIN detalle_pedido dp ON du.id_detalle_pedido = dp.id_detalle_pedido
+                    LEFT JOIN pedido p ON dp.id_pedido = p.idPedido
+                    ORDER BY p.fecha_pedido DESC, du.idDetalle_uniforme";
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -170,26 +185,22 @@ class DetalleUniformeRepository
     public function update(DetalleUniformeEntity $detalle): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET pedido_id = :pedido_id, talla = :talla, genero = :genero, 
-                        numero_camisola = :numero_camisola, medida_pecho = :medida_pecho, 
-                        medida_cintura = :medida_cintura, medida_cadera = :medida_cadera, 
-                        observaciones = :observaciones
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $detalle->getId(),
-                'pedido_id' => $detalle->getPedidoId(),
+            $data = [
+                'id_detalle_pedido' => $detalle->getIdDetallePedido(),
                 'talla' => $detalle->getTalla(),
                 'genero' => $detalle->getGenero(),
+                'nombre_camisola' => $detalle->getNombreCamisola(),
                 'numero_camisola' => $detalle->getNumeroCamisola(),
-                'medida_pecho' => $detalle->getMedidaPecho(),
-                'medida_cintura' => $detalle->getMedidaCintura(),
-                'medida_cadera' => $detalle->getMedidaCadera(),
-                'observaciones' => $detalle->getObservaciones()
+                'nombre_abajo_numero' => $detalle->getNombreAbajo(),
+                'cantidad' => $detalle->getCantidad(),
+                'con_medidas' => $detalle->getConMedidas()
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idDetalle_uniforme = :id";
+            $whereParams = ['id' => $detalle->getIdDetalleUniforme()];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating detalle uniforme: " . $e->getMessage());
             return false;
@@ -202,8 +213,11 @@ class DetalleUniformeRepository
     public function delete(int $id): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE id = :id";
-            return $this->connectionManager->delete($sql, ['id' => $id]);
+            $where = "idDetalle_uniforme = :id";
+            $params = ['id' => $id];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting detalle uniforme: " . $e->getMessage());
             return false;
@@ -211,15 +225,18 @@ class DetalleUniformeRepository
     }
 
     /**
-     * Eliminar todos los detalles de un pedido
+     * Eliminar todos los detalles de un detalle de pedido
      */
-    public function deleteByPedido(int $pedidoId): bool
+    public function deleteByDetallePedido(int $detallePedidoId): bool
     {
         try {
-            $sql = "DELETE FROM {$this->table} WHERE pedido_id = :pedido_id";
-            return $this->connectionManager->delete($sql, ['pedido_id' => $pedidoId]);
+            $where = "id_detalle_pedido = :detalle_pedido_id";
+            $params = ['detalle_pedido_id' => $detallePedidoId];
+
+            $rowCount = $this->connectionManager->delete($this->table, $where, $params);
+            return $rowCount > 0;
         } catch (Exception $e) {
-            error_log("Error deleting detalles by pedido: " . $e->getMessage());
+            error_log("Error deleting detalles by detalle pedido: " . $e->getMessage());
             return false;
         }
     }
@@ -227,21 +244,20 @@ class DetalleUniformeRepository
     /**
      * Obtener tallas más solicitadas
      */
-    public function getMostRequestedSizes(): array
+    public function getMostRequestedTallas(): array
     {
         try {
             $sql = "SELECT talla, 
                            COUNT(*) as cantidad_pedidos,
-                           COUNT(DISTINCT pedido_id) as pedidos_unicos
+                           SUM(cantidad) as total_cantidad
                     FROM {$this->table}
+                    WHERE talla IS NOT NULL
                     GROUP BY talla
                     ORDER BY cantidad_pedidos DESC";
                     
-            $results = $this->connectionManager->selectAll($sql);
-            
-            return $results;
+            return $this->connectionManager->select($sql);
         } catch (Exception $e) {
-            error_log("Error getting most requested sizes: " . $e->getMessage());
+            error_log("Error getting most requested tallas: " . $e->getMessage());
             return [];
         }
     }
@@ -254,20 +270,14 @@ class DetalleUniformeRepository
         try {
             $sql = "SELECT genero, 
                            COUNT(*) as cantidad_pedidos,
-                           COUNT(DISTINCT pedido_id) as pedidos_unicos,
-                           AVG(medida_pecho) as promedio_pecho,
-                           AVG(medida_cintura) as promedio_cintura,
-                           AVG(medida_cadera) as promedio_cadera
+                           SUM(cantidad) as total_cantidad,
+                           AVG(con_medidas) as promedio_medidas
                     FROM {$this->table}
-                    WHERE medida_pecho IS NOT NULL 
-                    AND medida_cintura IS NOT NULL 
-                    AND medida_cadera IS NOT NULL
+                    WHERE genero IS NOT NULL
                     GROUP BY genero
                     ORDER BY cantidad_pedidos DESC";
                     
-            $results = $this->connectionManager->selectAll($sql);
-            
-            return $results;
+            return $this->connectionManager->select($sql);
         } catch (Exception $e) {
             error_log("Error getting gender stats: " . $e->getMessage());
             return [];
@@ -281,16 +291,15 @@ class DetalleUniformeRepository
     {
         try {
             $sql = "SELECT numero_camisola, 
-                           COUNT(*) as cantidad_pedidos
+                           COUNT(*) as cantidad_pedidos,
+                           SUM(cantidad) as total_cantidad
                     FROM {$this->table}
-                    WHERE numero_camisola IS NOT NULL
+                    WHERE numero_camisola IS NOT NULL AND numero_camisola != ''
                     GROUP BY numero_camisola
                     ORDER BY cantidad_pedidos DESC
                     LIMIT 20";
                     
-            $results = $this->connectionManager->selectAll($sql);
-            
-            return $results;
+            return $this->connectionManager->select($sql);
         } catch (Exception $e) {
             error_log("Error getting most popular numbers: " . $e->getMessage());
             return [];
@@ -298,77 +307,42 @@ class DetalleUniformeRepository
     }
 
     /**
-     * Buscar por medidas específicas
+     * Obtener detalles que requieren medidas personalizadas
      */
-    public function findByMeasurements(array $measurements): array
+    public function findWithCustomMeasurements(): array
     {
         try {
-            $conditions = [];
-            $params = [];
-            
-            if (isset($measurements['pecho'])) {
-                $conditions[] = "medida_pecho BETWEEN :pecho_min AND :pecho_max";
-                $params['pecho_min'] = $measurements['pecho'] - 5;
-                $params['pecho_max'] = $measurements['pecho'] + 5;
-            }
-            
-            if (isset($measurements['cintura'])) {
-                $conditions[] = "medida_cintura BETWEEN :cintura_min AND :cintura_max";
-                $params['cintura_min'] = $measurements['cintura'] - 5;
-                $params['cintura_max'] = $measurements['cintura'] + 5;
-            }
-            
-            if (isset($measurements['cadera'])) {
-                $conditions[] = "medida_cadera BETWEEN :cadera_min AND :cadera_max";
-                $params['cadera_min'] = $measurements['cadera'] - 5;
-                $params['cadera_max'] = $measurements['cadera'] + 5;
-            }
-            
-            if (empty($conditions)) {
-                return [];
-            }
-            
-            $whereClause = implode(' AND ', $conditions);
-            
             $sql = "SELECT du.*, 
-                           p.fecha_pedido, p.estado as pedido_estado,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
+                           dp.id_pedido, dp.cantidad_producto,
+                           p.fecha_pedido, p.estado_pedido
                     FROM {$this->table} du 
-                    LEFT JOIN pedido p ON du.pedido_id = p.id 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id
-                    WHERE {$whereClause}
+                    LEFT JOIN detalle_pedido dp ON du.id_detalle_pedido = dp.id_detalle_pedido
+                    LEFT JOIN pedido p ON dp.id_pedido = p.idPedido
+                    WHERE du.con_medidas > 0
                     ORDER BY p.fecha_pedido DESC";
-                    
-            $results = $this->connectionManager->selectAll($sql, $params);
             
+            $results = $this->connectionManager->select($sql);
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
-            error_log("Error finding by measurements: " . $e->getMessage());
+            error_log("Error finding with custom measurements: " . $e->getMessage());
             return [];
         }
     }
 
     /**
-     * Obtener detalles con observaciones especiales
+     * Contar detalles por detalle de pedido
      */
-    public function findWithSpecialObservations(): array
+    public function countByDetallePedido(int $detallePedidoId): int
     {
         try {
-            $sql = "SELECT du.*, 
-                           p.fecha_pedido, p.estado as pedido_estado,
-                           c.nombre as cliente_nombre, c.apellido as cliente_apellido
-                    FROM {$this->table} du 
-                    LEFT JOIN pedido p ON du.pedido_id = p.id 
-                    LEFT JOIN cliente c ON p.cliente_id = c.id
-                    WHERE du.observaciones IS NOT NULL 
-                    AND du.observaciones != ''
-                    ORDER BY p.fecha_pedido DESC";
-            $results = $this->connectionManager->selectAll($sql);
-            
-            return array_map([$this, 'mapToEntity'], $results);
+            return $this->connectionManager->count(
+                $this->table,
+                'id_detalle_pedido = :detalle_pedido_id',
+                ['detalle_pedido_id' => $detallePedidoId]
+            );
         } catch (Exception $e) {
-            error_log("Error finding with special observations: " . $e->getMessage());
-            return [];
+            error_log("Error counting by detalle pedido: " . $e->getMessage());
+            return 0;
         }
     }
 
@@ -378,15 +352,42 @@ class DetalleUniformeRepository
     private function mapToEntity(array $data): DetalleUniformeEntity
     {
         $detalle = new DetalleUniformeEntity();
-        $detalle->setId($data['id']);
-        $detalle->setPedidoId($data['pedido_id']);
-        $detalle->setTalla($data['talla']);
-        $detalle->setGenero($data['genero']);
-        $detalle->setNumeroCamisola($data['numero_camisola']);
-        $detalle->setMedidaPecho($data['medida_pecho']);
-        $detalle->setMedidaCintura($data['medida_cintura']);
-        $detalle->setMedidaCadera($data['medida_cadera']);
-        $detalle->setObservaciones($data['observaciones']);
+        
+        if (isset($data['idDetalle_uniforme'])) {
+            $detalle->setIdDetalleUniforme((int)$data['idDetalle_uniforme']);
+        }
+        
+        if (isset($data['id_detalle_pedido'])) {
+            $detalle->setIdDetallePedido((int)$data['id_detalle_pedido']);
+        }
+        
+        if (isset($data['talla'])) {
+            $detalle->setTalla($data['talla']);
+        }
+        
+        if (isset($data['genero'])) {
+            $detalle->setGenero($data['genero']);
+        }
+        
+        if (isset($data['nombre_camisola'])) {
+            $detalle->setNombreCamisola($data['nombre_camisola']);
+        }
+        
+        if (isset($data['numero_camisola'])) {
+            $detalle->setNumeroCamisola($data['numero_camisola']);
+        }
+        
+        if (isset($data['nombre_abajo_numero'])) {
+            $detalle->setNombreAbajo($data['nombre_abajo_numero']);
+        }
+        
+        if (isset($data['cantidad'])) {
+            $detalle->setCantidad((int)$data['cantidad']);
+        }
+        
+        if (isset($data['con_medidas'])) {
+            $detalle->setConMedidas((float)$data['con_medidas']);
+        }
         
         return $detalle;
     }

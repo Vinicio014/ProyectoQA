@@ -1,10 +1,10 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\DetalleUniformeEntity;
-use Proyecto\Repositories\DetalleUniformeRepository;
-use Proyecto\Repositories\DetallePedidoRepository;
+use App\Entities\DetalleUniformeEntity;
+use App\Repositories\DetalleUniformeRepository;
+use App\Repositories\DetallePedidoRepository;
 use Exception;
 
 /**
@@ -31,7 +31,7 @@ class DetalleUniformeService
     {
         try {
             // Validar que el detalle de pedido exista
-            $detallePedido = $this->detallePedidoRepository->obtenerPorId($datosDetalle['detalle_pedido_id']);
+            $detallePedido = $this->detallePedidoRepository->findById($datosDetalle['idDetallePedido']);
             if (!$detallePedido) {
                 return [
                     'exito' => false,
@@ -50,21 +50,17 @@ class DetalleUniformeService
             }
 
             $detalle = new DetalleUniformeEntity();
-            $detalle->setDetallePedidoId($datosDetalle['detalle_pedido_id']);
+            $detalle->setIdDetallePedido($datosDetalle['idDetallePedido']);
             $detalle->setTalla($datosDetalle['talla']);
-            $detalle->setGenero($datosDetalle['genero'] ?? 'UNISEX');
-            $detalle->setNumero($datosDetalle['numero'] ?? null);
-            $detalle->setNombreJugador($datosDetalle['nombre_jugador'] ?? '');
-            $detalle->setColorPrimario($datosDetalle['color_primario'] ?? '');
-            $detalle->setColorSecundario($datosDetalle['color_secundario'] ?? '');
-            $detalle->setObservaciones($datosDetalle['observaciones'] ?? '');
+            $detalle->setGenero($datosDetalle['genero'] ?? 'Masculino');
+            $detalle->setNumeroCamisola($datosDetalle['numeroCamisola'] ?? null);
 
-            $detalleCreado = $this->detalleUniformeRepository->crear($detalle);
+            $detalleCreado = $this->detalleUniformeRepository->create($detalle);
 
             return [
                 'exito' => true,
                 'mensaje' => 'Detalle de uniforme creado exitosamente',
-                'datos' => $this->formatearDetalleUniforme($detalleCreado)
+                'datos' => $detalleCreado ? $detalleCreado->toArray() : null
             ];
 
         } catch (Exception $e) {
@@ -79,11 +75,11 @@ class DetalleUniformeService
     /**
      * Crear múltiples detalles de uniforme para un pedido
      */
-    public function crearMultiplesDetalles(int $detallePedidoId, array $uniformes): array
+    public function crearMultiplesDetalles(int $idDetallePedido, array $uniformes): array
     {
         try {
             // Validar que el detalle de pedido exista
-            $detallePedido = $this->detallePedidoRepository->obtenerPorId($detallePedidoId);
+            $detallePedido = $this->detallePedidoRepository->findById($idDetallePedido);
             if (!$detallePedido) {
                 return [
                     'exito' => false,
@@ -96,7 +92,7 @@ class DetalleUniformeService
             $errores = [];
 
             foreach ($uniformes as $index => $uniforme) {
-                $uniforme['detalle_pedido_id'] = $detallePedidoId;
+                $uniforme['idDetallePedido'] = $idDetallePedido;
                 
                 $resultado = $this->crearDetalleUniforme($uniforme);
                 
@@ -131,7 +127,7 @@ class DetalleUniformeService
     public function obtenerDetallePorId(int $id): array
     {
         try {
-            $detalle = $this->detalleUniformeRepository->obtenerPorId($id);
+            $detalle = $this->detalleUniformeRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -144,7 +140,7 @@ class DetalleUniformeService
             return [
                 'exito' => true,
                 'mensaje' => 'Detalle encontrado',
-                'datos' => $this->formatearDetalleUniforme($detalle)
+                'datos' => $detalle->toArray()
             ];
 
         } catch (Exception $e) {
@@ -159,10 +155,10 @@ class DetalleUniformeService
     /**
      * Obtener detalles por detalle de pedido
      */
-    public function obtenerDetallesPorDetallePedido(int $detallePedidoId): array
+    public function obtenerDetallesPorDetallePedido(int $idDetallePedido): array
     {
         try {
-            $detallePedido = $this->detallePedidoRepository->obtenerPorId($detallePedidoId);
+            $detallePedido = $this->detallePedidoRepository->findById($idDetallePedido);
             if (!$detallePedido) {
                 return [
                     'exito' => false,
@@ -171,12 +167,12 @@ class DetalleUniformeService
                 ];
             }
 
-            $detalles = $this->detalleUniformeRepository->obtenerPorDetallePedido($detallePedidoId);
+            $detalles = $this->detalleUniformeRepository->findByDetallePedido($idDetallePedido);
             
             return [
                 'exito' => true,
                 'mensaje' => 'Detalles de uniformes obtenidos',
-                'datos' => array_map([$this, 'formatearDetalleUniforme'], $detalles)
+                'datos' => array_map(fn($d) => $d->toArray(), $detalles)
             ];
 
         } catch (Exception $e) {
@@ -194,7 +190,7 @@ class DetalleUniformeService
     public function actualizarDetalleUniforme(int $id, array $datosDetalle): array
     {
         try {
-            $detalle = $this->detalleUniformeRepository->obtenerPorId($id);
+            $detalle = $this->detalleUniformeRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -220,32 +216,25 @@ class DetalleUniformeService
                 $detalle->setGenero($datosDetalle['genero']);
             }
 
-            if (isset($datosDetalle['numero'])) {
-                $detalle->setNumero($datosDetalle['numero']);
+            if (isset($datosDetalle['numeroCamisola'])) {
+                $detalle->setNumeroCamisola($datosDetalle['numeroCamisola']);
             }
 
-            if (isset($datosDetalle['nombre_jugador'])) {
-                $detalle->setNombreJugador($datosDetalle['nombre_jugador']);
-            }
+            $resultado = $this->detalleUniformeRepository->update($detalle);
 
-            if (isset($datosDetalle['color_primario'])) {
-                $detalle->setColorPrimario($datosDetalle['color_primario']);
+            if ($resultado) {
+                $detalleActualizado = $this->detalleUniformeRepository->findById($id);
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Detalle de uniforme actualizado exitosamente',
+                    'datos' => $detalleActualizado->toArray()
+                ];
             }
-
-            if (isset($datosDetalle['color_secundario'])) {
-                $detalle->setColorSecundario($datosDetalle['color_secundario']);
-            }
-
-            if (isset($datosDetalle['observaciones'])) {
-                $detalle->setObservaciones($datosDetalle['observaciones']);
-            }
-
-            $detalleActualizado = $this->detalleUniformeRepository->actualizar($detalle);
 
             return [
-                'exito' => true,
-                'mensaje' => 'Detalle de uniforme actualizado exitosamente',
-                'datos' => $this->formatearDetalleUniforme($detalleActualizado)
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar el detalle',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
@@ -263,7 +252,7 @@ class DetalleUniformeService
     public function eliminarDetalleUniforme(int $id): array
     {
         try {
-            $detalle = $this->detalleUniformeRepository->obtenerPorId($id);
+            $detalle = $this->detalleUniformeRepository->findById($id);
 
             if (!$detalle) {
                 return [
@@ -273,7 +262,7 @@ class DetalleUniformeService
                 ];
             }
 
-            $resultado = $this->detalleUniformeRepository->eliminar($id);
+            $resultado = $this->detalleUniformeRepository->delete($id);
 
             if ($resultado) {
                 return [
@@ -299,109 +288,70 @@ class DetalleUniformeService
     }
 
     /**
-     * Obtener estadísticas de uniformes
+     * Obtener uniformes por género
      */
-    public function obtenerEstadisticasUniformes(array $filtros = []): array
+    public function obtenerUniformesPorGenero(string $genero): array
     {
         try {
-            $estadisticas = [
-                'total_uniformes' => $this->detalleUniformeRepository->contarTotal($filtros),
-                'uniformes_por_talla' => $this->detalleUniformeRepository->agruparPorTalla($filtros),
-                'uniformes_por_genero' => $this->detalleUniformeRepository->agruparPorGenero($filtros),
-                'uniformes_con_numero' => $this->detalleUniformeRepository->contarConNumero($filtros),
-                'uniformes_con_nombre' => $this->detalleUniformeRepository->contarConNombre($filtros),
-                'colores_mas_usados' => $this->detalleUniformeRepository->obtenerColoresMasUsados(10, $filtros),
-                'tallas_mas_pedidas' => $this->detalleUniformeRepository->obtenerTallasMasPedidas(10, $filtros)
-            ];
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Estadísticas obtenidas exitosamente',
-                'datos' => $estadisticas
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener estadísticas: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
-     * Buscar uniformes por jugador
-     */
-    public function buscarUniformesPorJugador(string $nombreJugador): array
-    {
-        try {
-            if (empty($nombreJugador)) {
+            if (!in_array($genero, ['Masculino', 'Femenino'])) {
                 return [
                     'exito' => false,
-                    'mensaje' => 'El nombre del jugador es requerido',
+                    'mensaje' => 'Género no válido',
                     'datos' => []
                 ];
             }
 
-            $uniformes = $this->detalleUniformeRepository->buscarPorNombreJugador($nombreJugador);
+            $uniformes = $this->detalleUniformeRepository->findByGender($genero);
             
             return [
                 'exito' => true,
-                'mensaje' => 'Búsqueda completada',
-                'datos' => array_map([$this, 'formatearDetalleUniforme'], $uniformes)
+                'mensaje' => 'Uniformes por género obtenidos',
+                'datos' => array_map(fn($u) => $u->toArray(), $uniformes)
             ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error en búsqueda: ' . $e->getMessage(),
+                'mensaje' => 'Error al obtener uniformes por género: ' . $e->getMessage(),
                 'datos' => []
             ];
         }
     }
 
     /**
-     * Obtener uniformes por número
+     * Obtener uniformes por talla
      */
-    public function obtenerUniformesPorNumero(int $numero): array
+    public function obtenerUniformesPorTalla(string $talla): array
     {
         try {
-            if ($numero < 0 || $numero > 999) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Número de uniforme no válido',
-                    'datos' => []
-                ];
-            }
-
-            $uniformes = $this->detalleUniformeRepository->obtenerPorNumero($numero);
+            $uniformes = $this->detalleUniformeRepository->findBySize($talla);
             
             return [
                 'exito' => true,
-                'mensaje' => 'Uniformes con número ' . $numero . ' obtenidos',
-                'datos' => array_map([$this, 'formatearDetalleUniforme'], $uniformes)
+                'mensaje' => 'Uniformes por talla obtenidos',
+                'datos' => array_map(fn($u) => $u->toArray(), $uniformes)
             ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al obtener uniformes por número: ' . $e->getMessage(),
+                'mensaje' => 'Error al obtener uniformes por talla: ' . $e->getMessage(),
                 'datos' => []
             ];
         }
     }
 
     /**
-     * Validar disponibilidad de número en un equipo/pedido
+     * Validar disponibilidad de número de camisola
      */
-    public function validarNumeroDisponible(int $detallePedidoId, int $numero): array
+    public function validarNumeroCamisolaDisponible(int $idDetallePedido, int $numero): array
     {
         try {
-            $uniformesExistentes = $this->detalleUniformeRepository->obtenerPorDetallePedido($detallePedidoId);
+            $uniformesExistentes = $this->detalleUniformeRepository->findByDetallePedido($idDetallePedido);
             
             $numeroOcupado = false;
             foreach ($uniformesExistentes as $uniforme) {
-                if ($uniforme->getNumero() === $numero) {
+                if ($uniforme->getNumeroCamisola() === $numero) {
                     $numeroOcupado = true;
                     break;
                 }
@@ -421,62 +371,13 @@ class DetalleUniformeService
     }
 
     /**
-     * Generar reporte de uniformes por pedido
-     */
-    public function generarReporteUniformesPedido(int $detallePedidoId): array
-    {
-        try {
-            $detallePedido = $this->detallePedidoRepository->obtenerPorId($detallePedidoId);
-            if (!$detallePedido) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Detalle de pedido no encontrado',
-                    'datos' => null
-                ];
-            }
-
-            $uniformes = $this->detalleUniformeRepository->obtenerPorDetallePedido($detallePedidoId);
-            
-            $reporte = [
-                'detalle_pedido' => [
-                    'id' => $detallePedido->getId(),
-                    'cantidad' => $detallePedido->getCantidad(),
-                    'precio_unitario' => $detallePedido->getPrecioUnitario(),
-                    'subtotal' => $detallePedido->getSubtotal()
-                ],
-                'uniformes' => array_map([$this, 'formatearDetalleUniforme'], $uniformes),
-                'resumen' => [
-                    'total_uniformes' => count($uniformes),
-                    'por_talla' => $this->agruparPorTalla($uniformes),
-                    'por_genero' => $this->agruparPorGenero($uniformes),
-                    'con_numero' => count(array_filter($uniformes, fn($u) => !is_null($u->getNumero()))),
-                    'con_nombre' => count(array_filter($uniformes, fn($u) => !empty($u->getNombreJugador())))
-                ]
-            ];
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Reporte generado exitosamente',
-                'datos' => $reporte
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al generar reporte: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
      * Validar datos de detalle de uniforme
      */
     public function validarDatosDetalle(array $datos): array
     {
         $errores = [];
 
-        if (empty($datos['detalle_pedido_id']) || $datos['detalle_pedido_id'] <= 0) {
+        if (empty($datos['idDetallePedido']) || $datos['idDetallePedido'] <= 0) {
             $errores[] = 'El detalle de pedido es requerido';
         }
 
@@ -489,89 +390,18 @@ class DetalleUniformeService
             $errores[] = 'Talla no válida';
         }
 
-        $generosValidos = ['MASCULINO', 'FEMENINO', 'UNISEX'];
+        $generosValidos = ['Masculino', 'Femenino'];
         if (isset($datos['genero']) && !in_array($datos['genero'], $generosValidos)) {
             $errores[] = 'Género no válido';
         }
 
-        if (isset($datos['numero']) && ($datos['numero'] < 0 || $datos['numero'] > 999)) {
-            $errores[] = 'Número de uniforme debe estar entre 0 y 999';
-        }
-
-        if (isset($datos['nombre_jugador']) && strlen($datos['nombre_jugador']) > 50) {
-            $errores[] = 'El nombre del jugador no puede exceder 50 caracteres';
+        if (isset($datos['numeroCamisola']) && ($datos['numeroCamisola'] < 0 || $datos['numeroCamisola'] > 999)) {
+            $errores[] = 'Número de camisola debe estar entre 0 y 999';
         }
 
         return [
             'valido' => empty($errores),
             'errores' => $errores
         ];
-    }
-
-    /**
-     * Formatear detalle de uniforme con información completa
-     */
-    private function formatearDetalleUniforme(DetalleUniformeEntity $detalle): array
-    {
-        $datos = $detalle->toArray();
-        
-        // Agregar información del detalle de pedido
-        try {
-            $detallePedido = $this->detallePedidoRepository->obtenerPorId($detalle->getDetallePedidoId());
-            if ($detallePedido) {
-                $datos['detalle_pedido'] = [
-                    'id' => $detallePedido->getId(),
-                    'pedido_id' => $detallePedido->getPedidoId(),
-                    'producto_id' => $detallePedido->getProductoId(),
-                    'cantidad' => $detallePedido->getCantidad(),
-                    'precio_unitario' => $detallePedido->getPrecioUnitario()
-                ];
-            }
-        } catch (Exception $e) {
-            $datos['detalle_pedido'] = null;
-        }
-
-        // Agregar información adicional
-        $datos['tiene_numero'] = !is_null($detalle->getNumero());
-        $datos['tiene_nombre_jugador'] = !empty($detalle->getNombreJugador());
-        $datos['tiene_colores_personalizados'] = !empty($detalle->getColorPrimario()) || !empty($detalle->getColorSecundario());
-
-        return $datos;
-    }
-
-    /**
-     * Agrupar uniformes por talla
-     */
-    private function agruparPorTalla(array $uniformes): array
-    {
-        $grupos = [];
-        
-        foreach ($uniformes as $uniforme) {
-            $talla = $uniforme->getTalla();
-            if (!isset($grupos[$talla])) {
-                $grupos[$talla] = 0;
-            }
-            $grupos[$talla]++;
-        }
-
-        return $grupos;
-    }
-
-    /**
-     * Agrupar uniformes por género
-     */
-    private function agruparPorGenero(array $uniformes): array
-    {
-        $grupos = [];
-        
-        foreach ($uniformes as $uniforme) {
-            $genero = $uniforme->getGenero();
-            if (!isset($grupos[$genero])) {
-                $grupos[$genero] = 0;
-            }
-            $grupos[$genero]++;
-        }
-
-        return $grupos;
     }
 }

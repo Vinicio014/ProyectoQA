@@ -78,11 +78,20 @@ class RolEntity implements RolEntityInterface
 
     public static function fromArray(array $data): self
     {
+        $fechaRegistro = null;
+        if (isset($data['fechaRegistro'])) {
+            try {
+                $fechaRegistro = new \DateTime($data['fechaRegistro']);
+            } catch (\Exception $e) {
+                $fechaRegistro = new \DateTime();
+            }
+        }
+
         return new self(
             $data['idRol'] ?? null,
             $data['descripcion'] ?? null,
             $data['esActivo'] ?? true,
-            isset($data['fechaRegistro']) ? new \DateTime($data['fechaRegistro']) : null
+            $fechaRegistro
         );
     }
 

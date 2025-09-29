@@ -1,83 +1,28 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\PagoEntity;
-use Proyecto\Repositories\PagoRepository;
-use Proyecto\Repositories\VentaRepository;
-use Proyecto\Repositories\PedidoRepository;
+use App\Entities\PagoEntity;
+use App\Repositories\PagoRepository;
+use App\Repositories\VentaRepository;
+use App\Repositories\PedidoRepository;
 use Exception;
 
 /**
  * Servicio para la gestión de pagos
- * Contiene la lógica de negocio para pagos de ventas y pedidos
+ * Contiene la lógica de negocio para pagos de pedidos
  */
 class PagoService
 {
     private PagoRepository $pagoRepository;
-    private VentaRepository $ventaRepository;
     private PedidoRepository $pedidoRepository;
 
     public function __construct(
         PagoRepository $pagoRepository,
-        VentaRepository $ventaRepository,
         PedidoRepository $pedidoRepository
     ) {
         $this->pagoRepository = $pagoRepository;
-        $this->ventaRepository = $ventaRepository;
         $this->pedidoRepository = $pedidoRepository;
-    }
-
-    /**
-     * Registrar pago de venta
-     */
-    public function registrarPagoVenta(array $datosPago): array
-    {
-        try {
-            // Validar que la venta exista
-            $venta = $this->ventaRepository->obtenerPorId($datosPago['venta_id']);
-            if (!$venta) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Venta no encontrada',
-                    'datos' => null
-                ];
-            }
-
-            // Validar monto
-            if ($datosPago['monto'] <= 0) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'El monto debe ser mayor que 0',
-                    'datos' => null
-                ];
-            }
-
-            $pago = new PagoEntity();
-            $pago->setVentaId($datosPago['venta_id']);
-            $pago->setPedidoId(null);
-            $pago->setMonto($datosPago['monto']);
-            $pago->setMetodoPago($datosPago['metodo_pago']);
-            $pago->setFechaPago(new \DateTime($datosPago['fecha_pago'] ?? 'now'));
-            $pago->setReferencia($datosPago['referencia'] ?? '');
-            $pago->setObservaciones($datosPago['observaciones'] ?? '');
-            $pago->setEstado($datosPago['estado'] ?? 'COMPLETADO');
-
-            $pagoCreado = $this->pagoRepository->crear($pago);
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Pago registrado exitosamente',
-                'datos' => $this->formatearPago($pagoCreado)
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al registrar pago: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
     }
 
     /**
@@ -87,7 +32,7 @@ class PagoService
     {
         try {
             // Validar que el pedido exista
-            $pedido = $this->pedidoRepository->obtenerPorId($datosPago['pedido_id']);
+            $pedido = $this->pedidoRepository->findById($datosPago['nrPedido']);
             if (!$pedido) {
                 return [
                     'exito' => false,
@@ -97,7 +42,7 @@ class PagoService
             }
 
             // Validar monto
-            if ($datosPago['monto'] <= 0) {
+            if ($datosPago['montoPagado'] <= 0) {
                 return [
                     'exito' => false,
                     'mensaje' => 'El monto debe ser mayor que 0',
@@ -106,21 +51,16 @@ class PagoService
             }
 
             $pago = new PagoEntity();
-            $pago->setVentaId(null);
-            $pago->setPedidoId($datosPago['pedido_id']);
-            $pago->setMonto($datosPago['monto']);
-            $pago->setMetodoPago($datosPago['metodo_pago']);
-            $pago->setFechaPago(new \DateTime($datosPago['fecha_pago'] ?? 'now'));
-            $pago->setReferencia($datosPago['referencia'] ?? '');
-            $pago->setObservaciones($datosPago['observaciones'] ?? '');
-            $pago->setEstado($datosPago['estado'] ?? 'COMPLETADO');
+            $pago->setNrPedido($datosPago['nrPedido']);
+            $pago->setMontoPagado($datosPago['montoPagado']);
+            $pago->setDescripcion($datosPago['descripcion'] ?? '');
 
-            $pagoCreado = $this->pagoRepository->crear($pago);
+            $pagoCreado = $this->pagoRepository->create($pago);
 
             return [
                 'exito' => true,
                 'mensaje' => 'Pago registrado exitosamente',
-                'datos' => $this->formatearPago($pagoCreado)
+                'datos' => $pagoCreado ? $pagoCreado->toArray() : null
             ];
 
         } catch (Exception $e) {
@@ -138,7 +78,7 @@ class PagoService
     public function obtenerPagoPorId(int $id): array
     {
         try {
-            $pago = $this->pagoRepository->obtenerPorId($id);
+            $pago = $this->pagoRepository->findById($id);
 
             if (!$pago) {
                 return [
@@ -151,7 +91,7 @@ class PagoService
             return [
                 'exito' => true,
                 'mensaje' => 'Pago encontrado',
-                'datos' => $this->formatearPago($pago)
+                'datos' => $pago->toArray()
             ];
 
         } catch (Exception $e) {
@@ -164,17 +104,17 @@ class PagoService
     }
 
     /**
-     * Listar pagos con filtros
+     * Listar todos los pagos
      */
-    public function listarPagos(array $filtros = []): array
+    public function listarPagos(): array
     {
         try {
-            $pagos = $this->pagoRepository->listarConFiltros($filtros);
+            $pagos = $this->pagoRepository->findAll();
             
             return [
                 'exito' => true,
                 'mensaje' => 'Pagos obtenidos exitosamente',
-                'datos' => array_map([$this, 'formatearPago'], $pagos)
+                'datos' => array_map(fn($p) => $p->toArray(), $pagos)
             ];
 
         } catch (Exception $e) {
@@ -187,59 +127,12 @@ class PagoService
     }
 
     /**
-     * Obtener pagos de una venta
-     */
-    public function obtenerPagosVenta(int $ventaId): array
-    {
-        try {
-            $venta = $this->ventaRepository->obtenerPorId($ventaId);
-            if (!$venta) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Venta no encontrada',
-                    'datos' => []
-                ];
-            }
-
-            $pagos = $this->pagoRepository->obtenerPorVenta($ventaId);
-            
-            $totalPagado = array_sum(array_map(fn($p) => $p->getMonto(), $pagos));
-            $saldoPendiente = $venta->getTotal() - $totalPagado;
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Pagos de la venta obtenidos',
-                'datos' => [
-                    'venta' => [
-                        'id' => $venta->getId(),
-                        'total' => $venta->getTotal(),
-                        'fecha' => $venta->getFecha()->format('Y-m-d')
-                    ],
-                    'pagos' => array_map([$this, 'formatearPago'], $pagos),
-                    'resumen' => [
-                        'total_pagado' => $totalPagado,
-                        'saldo_pendiente' => $saldoPendiente,
-                        'pagado_completo' => $saldoPendiente <= 0
-                    ]
-                ]
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener pagos de la venta: ' . $e->getMessage(),
-                'datos' => []
-            ];
-        }
-    }
-
-    /**
      * Obtener pagos de un pedido
      */
     public function obtenerPagosPedido(int $pedidoId): array
     {
         try {
-            $pedido = $this->pedidoRepository->obtenerPorId($pedidoId);
+            $pedido = $this->pedidoRepository->findById($pedidoId);
             if (!$pedido) {
                 return [
                     'exito' => false,
@@ -248,26 +141,23 @@ class PagoService
                 ];
             }
 
-            $pagos = $this->pagoRepository->obtenerPorPedido($pedidoId);
+            $pagos = $this->pagoRepository->findByPedido($pedidoId);
             
-            $totalPagado = array_sum(array_map(fn($p) => $p->getMonto(), $pagos));
-            $saldoPendiente = $pedido->getTotal() - $totalPagado;
+            $totalPagado = array_sum(array_map(fn($p) => $p->getMontoPagado(), $pagos));
 
             return [
                 'exito' => true,
                 'mensaje' => 'Pagos del pedido obtenidos',
                 'datos' => [
                     'pedido' => [
-                        'id' => $pedido->getId(),
-                        'total' => $pedido->getTotal(),
+                        'id' => $pedido->getIdPedido(),
                         'fecha_pedido' => $pedido->getFechaPedido()->format('Y-m-d'),
-                        'fecha_entrega' => $pedido->getFechaEntrega()->format('Y-m-d')
+                        'estado' => $pedido->getEstadoPedido()
                     ],
-                    'pagos' => array_map([$this, 'formatearPago'], $pagos),
+                    'pagos' => array_map(fn($p) => $p->toArray(), $pagos),
                     'resumen' => [
                         'total_pagado' => $totalPagado,
-                        'saldo_pendiente' => $saldoPendiente,
-                        'pagado_completo' => $saldoPendiente <= 0
+                        'cantidad_pagos' => count($pagos)
                     ]
                 ]
             ];
@@ -282,12 +172,12 @@ class PagoService
     }
 
     /**
-     * Anular pago
+     * Actualizar pago
      */
-    public function anularPago(int $id, string $motivo = ''): array
+    public function actualizarPago(int $id, array $datosPago): array
     {
         try {
-            $pago = $this->pagoRepository->obtenerPorId($id);
+            $pago = $this->pagoRepository->findById($id);
 
             if (!$pago) {
                 return [
@@ -297,171 +187,125 @@ class PagoService
                 ];
             }
 
-            if ($pago->getEstado() === 'ANULADO') {
+            if (isset($datosPago['montoPagado'])) {
+                if ($datosPago['montoPagado'] <= 0) {
+                    return [
+                        'exito' => false,
+                        'mensaje' => 'El monto debe ser mayor que 0',
+                        'datos' => null
+                    ];
+                }
+                $pago->setMontoPagado($datosPago['montoPagado']);
+            }
+
+            if (isset($datosPago['descripcion'])) {
+                $pago->setDescripcion($datosPago['descripcion']);
+            }
+
+            $resultado = $this->pagoRepository->update($pago);
+
+            if ($resultado) {
+                $pagoActualizado = $this->pagoRepository->findById($id);
                 return [
-                    'exito' => false,
-                    'mensaje' => 'El pago ya está anulado',
-                    'datos' => null
+                    'exito' => true,
+                    'mensaje' => 'Pago actualizado exitosamente',
+                    'datos' => $pagoActualizado->toArray()
                 ];
             }
 
-            $pago->setEstado('ANULADO');
-            $observacionesActuales = $pago->getObservaciones();
-            $nuevasObservaciones = $observacionesActuales . "\n[" . date('Y-m-d H:i') . "] ANULADO: $motivo";
-            $pago->setObservaciones($nuevasObservaciones);
-
-            $pagoActualizado = $this->pagoRepository->actualizar($pago);
-
             return [
-                'exito' => true,
-                'mensaje' => 'Pago anulado exitosamente',
-                'datos' => $this->formatearPago($pagoActualizado)
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar el pago',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al anular pago: ' . $e->getMessage(),
+                'mensaje' => 'Error al actualizar pago: ' . $e->getMessage(),
                 'datos' => null
             ];
         }
     }
 
     /**
-     * Procesar pago con validaciones
+     * Eliminar pago
      */
-    public function procesarPago(array $datosPago): array
+    public function eliminarPago(int $id): array
     {
         try {
-            // Validar método de pago
-            $metodosValidos = ['EFECTIVO', 'TARJETA_CREDITO', 'TARJETA_DEBITO', 'TRANSFERENCIA', 'CHEQUE'];
-            if (!in_array($datosPago['metodo_pago'], $metodosValidos)) {
+            $resultado = $this->pagoRepository->delete($id);
+
+            if ($resultado) {
                 return [
-                    'exito' => false,
-                    'mensaje' => 'Método de pago no válido',
+                    'exito' => true,
+                    'mensaje' => 'Pago eliminado exitosamente',
                     'datos' => null
                 ];
             }
 
-            // Validar referencia para métodos que la requieren
-            $metodosConReferencia = ['TARJETA_CREDITO', 'TARJETA_DEBITO', 'TRANSFERENCIA', 'CHEQUE'];
-            if (in_array($datosPago['metodo_pago'], $metodosConReferencia) && empty($datosPago['referencia'])) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'La referencia es requerida para este método de pago',
-                    'datos' => null
-                ];
-            }
-
-            // Determinar si es pago de venta o pedido
-            if (isset($datosPago['venta_id']) && !empty($datosPago['venta_id'])) {
-                return $this->registrarPagoVenta($datosPago);
-            } elseif (isset($datosPago['pedido_id']) && !empty($datosPago['pedido_id'])) {
-                return $this->registrarPagoPedido($datosPago);
-            } else {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Debe especificar una venta o un pedido',
-                    'datos' => null
-                ];
-            }
+            return [
+                'exito' => false,
+                'mensaje' => 'No se pudo eliminar el pago',
+                'datos' => null
+            ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al procesar pago: ' . $e->getMessage(),
+                'mensaje' => 'Error al eliminar pago: ' . $e->getMessage(),
                 'datos' => null
             ];
         }
     }
 
     /**
-     * Obtener estadísticas de pagos
+     * Verificar si un pedido está completamente pagado
      */
-    public function obtenerEstadisticasPagos(array $filtros = []): array
+    public function verificarPedidoPagado(int $pedidoId): array
     {
         try {
-            $estadisticas = [
-                'total_pagos' => $this->pagoRepository->contarPagos($filtros),
-                'monto_total_pagos' => $this->pagoRepository->calcularMontoTotal($filtros),
-                'pagos_por_metodo' => $this->pagoRepository->obtenerPagosPorMetodo($filtros),
-                'pagos_por_mes' => $this->pagoRepository->obtenerPagosPorMes($filtros),
-                'promedio_pago' => $this->pagoRepository->calcularPromedioPagos($filtros),
-                'pagos_completados' => $this->pagoRepository->contarPorEstado('COMPLETADO', $filtros),
-                'pagos_pendientes' => $this->pagoRepository->contarPorEstado('PENDIENTE', $filtros),
-                'pagos_anulados' => $this->pagoRepository->contarPorEstado('ANULADO', $filtros)
-            ];
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Estadísticas obtenidas exitosamente',
-                'datos' => $estadisticas
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener estadísticas: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
-     * Obtener pagos por rango de fechas
-     */
-    public function obtenerPagosPorFechas(\DateTime $fechaInicio, \DateTime $fechaFin): array
-    {
-        try {
-            $pagos = $this->pagoRepository->obtenerPorRangoFechas($fechaInicio, $fechaFin);
+            $isPagado = $this->pagoRepository->isPedidoFullyPaid($pedidoId);
             
             return [
                 'exito' => true,
-                'mensaje' => 'Pagos por fechas obtenidos',
-                'datos' => array_map([$this, 'formatearPago'], $pagos)
+                'mensaje' => $isPagado ? 'Pedido completamente pagado' : 'Pedido con saldo pendiente',
+                'datos' => [
+                    'pedido_id' => $pedidoId,
+                    'completamente_pagado' => $isPagado
+                ]
             ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al obtener pagos por fechas: ' . $e->getMessage(),
-                'datos' => []
+                'mensaje' => 'Error al verificar estado de pago: ' . $e->getMessage(),
+                'datos' => null
             ];
         }
     }
 
     /**
-     * Generar reporte de pagos
+     * Obtener total pagado de un pedido
      */
-    public function generarReportePagos(array $filtros = []): array
+    public function obtenerTotalPagadoPedido(int $pedidoId): array
     {
         try {
-            $pagos = $this->pagoRepository->listarConFiltros($filtros);
+            $total = $this->pagoRepository->getTotalPaidForPedido($pedidoId);
             
-            $reporte = [
-                'periodo' => [
-                    'fecha_inicio' => $filtros['fecha_inicio'] ?? null,
-                    'fecha_fin' => $filtros['fecha_fin'] ?? null
-                ],
-                'resumen' => [
-                    'total_pagos' => count($pagos),
-                    'monto_total' => array_sum(array_map(fn($p) => $p->getMonto(), $pagos)),
-                    'pagos_por_metodo' => $this->agruparPagosPorMetodo($pagos),
-                    'pagos_por_estado' => $this->agruparPagosPorEstado($pagos)
-                ],
-                'pagos' => array_map([$this, 'formatearPago'], $pagos)
-            ];
-
             return [
                 'exito' => true,
-                'mensaje' => 'Reporte generado exitosamente',
-                'datos' => $reporte
+                'mensaje' => 'Total pagado obtenido',
+                'datos' => [
+                    'pedido_id' => $pedidoId,
+                    'total_pagado' => $total
+                ]
             ];
 
         } catch (Exception $e) {
             return [
                 'exito' => false,
-                'mensaje' => 'Error al generar reporte: ' . $e->getMessage(),
+                'mensaje' => 'Error al obtener total pagado: ' . $e->getMessage(),
                 'datos' => null
             ];
         }
@@ -474,118 +318,17 @@ class PagoService
     {
         $errores = [];
 
-        if (!isset($datos['monto']) || $datos['monto'] <= 0) {
+        if (!isset($datos['montoPagado']) || $datos['montoPagado'] <= 0) {
             $errores[] = 'El monto debe ser mayor que 0';
         }
 
-        if (empty($datos['metodo_pago'])) {
-            $errores[] = 'El método de pago es requerido';
-        }
-
-        $metodosValidos = ['EFECTIVO', 'TARJETA_CREDITO', 'TARJETA_DEBITO', 'TRANSFERENCIA', 'CHEQUE'];
-        if (!empty($datos['metodo_pago']) && !in_array($datos['metodo_pago'], $metodosValidos)) {
-            $errores[] = 'Método de pago no válido';
-        }
-
-        if (empty($datos['venta_id']) && empty($datos['pedido_id'])) {
-            $errores[] = 'Debe especificar una venta o un pedido';
-        }
-
-        if (!empty($datos['venta_id']) && !empty($datos['pedido_id'])) {
-            $errores[] = 'No puede especificar venta y pedido al mismo tiempo';
+        if (empty($datos['nrPedido']) || $datos['nrPedido'] <= 0) {
+            $errores[] = 'El pedido es requerido';
         }
 
         return [
             'valido' => empty($errores),
             'errores' => $errores
         ];
-    }
-
-    /**
-     * Formatear pago con información completa
-     */
-    private function formatearPago(PagoEntity $pago): array
-    {
-        $datos = $pago->toArray();
-        
-        // Agregar información de venta o pedido
-        if ($pago->getVentaId()) {
-            try {
-                $venta = $this->ventaRepository->obtenerPorId($pago->getVentaId());
-                if ($venta) {
-                    $datos['venta'] = [
-                        'id' => $venta->getId(),
-                        'fecha' => $venta->getFecha()->format('Y-m-d'),
-                        'total' => $venta->getTotal(),
-                        'cliente_id' => $venta->getClienteId()
-                    ];
-                }
-            } catch (Exception $e) {
-                $datos['venta'] = null;
-            }
-        }
-
-        if ($pago->getPedidoId()) {
-            try {
-                $pedido = $this->pedidoRepository->obtenerPorId($pago->getPedidoId());
-                if ($pedido) {
-                    $datos['pedido'] = [
-                        'id' => $pedido->getId(),
-                        'fecha_pedido' => $pedido->getFechaPedido()->format('Y-m-d'),
-                        'fecha_entrega' => $pedido->getFechaEntrega()->format('Y-m-d'),
-                        'total' => $pedido->getTotal(),
-                        'cliente_id' => $pedido->getClienteId()
-                    ];
-                }
-            } catch (Exception $e) {
-                $datos['pedido'] = null;
-            }
-        }
-
-        return $datos;
-    }
-
-    /**
-     * Agrupar pagos por método
-     */
-    private function agruparPagosPorMetodo(array $pagos): array
-    {
-        $grupos = [];
-        
-        foreach ($pagos as $pago) {
-            $metodo = $pago->getMetodoPago();
-            if (!isset($grupos[$metodo])) {
-                $grupos[$metodo] = [
-                    'cantidad' => 0,
-                    'monto_total' => 0
-                ];
-            }
-            $grupos[$metodo]['cantidad']++;
-            $grupos[$metodo]['monto_total'] += $pago->getMonto();
-        }
-
-        return $grupos;
-    }
-
-    /**
-     * Agrupar pagos por estado
-     */
-    private function agruparPagosPorEstado(array $pagos): array
-    {
-        $grupos = [];
-        
-        foreach ($pagos as $pago) {
-            $estado = $pago->getEstado();
-            if (!isset($grupos[$estado])) {
-                $grupos[$estado] = [
-                    'cantidad' => 0,
-                    'monto_total' => 0
-                ];
-            }
-            $grupos[$estado]['cantidad']++;
-            $grupos[$estado]['monto_total'] += $pago->getMonto();
-        }
-
-        return $grupos;
     }
 }

@@ -22,22 +22,17 @@ class ProductoRepository
     public function create(ProductoEntity $producto): ?ProductoEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (codigo, nombre, descripcion, precio, stock, 
-                    categoria_id, activo, fecha_creacion) 
-                    VALUES (:codigo, :nombre, :descripcion, :precio, :stock, 
-                    :categoria_id, :activo, NOW())";
-            
-            $params = [
-                'codigo' => $producto->getCodigo(),
+            $data = [
                 'nombre' => $producto->getNombre(),
+                'marca' => $producto->getMarca(),
                 'descripcion' => $producto->getDescripcion(),
-                'precio' => $producto->getPrecio(),
+                'idCategoria' => $producto->getIdCategoria(),
                 'stock' => $producto->getStock(),
-                'categoria_id' => $producto->getCategoriaId(),
-                'activo' => $producto->isActivo() ? 1 : 0
+                'precio_unitario' => $producto->getPrecioUnitario(),
+                'esActivo' => $producto->getEsActivo() ? 1 : 0
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -56,10 +51,10 @@ class ProductoRepository
     public function findById(int $id): ?ProductoEntity
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre 
                     FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
-                    WHERE p.id = :id";
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria 
+                    WHERE p.idProducto = :id";
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -70,35 +65,16 @@ class ProductoRepository
     }
 
     /**
-     * Obtener producto por código
-     */
-    public function findByCode(string $codigo): ?ProductoEntity
-    {
-        try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
-                    FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
-                    WHERE p.codigo = :codigo";
-            $result = $this->connectionManager->selectOne($sql, ['codigo' => $codigo]);
-            
-            return $result ? $this->mapToEntity($result) : null;
-        } catch (Exception $e) {
-            error_log("Error finding producto by code: " . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
      * Obtener todos los productos
      */
     public function findAll(): array
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre 
                     FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria 
                     ORDER BY p.nombre";
-            $results = $this->connectionManager->selectAll($sql);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -113,12 +89,12 @@ class ProductoRepository
     public function findByCategory(int $categoriaId): array
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre 
                     FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
-                    WHERE p.categoria_id = :categoria_id 
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria 
+                    WHERE p.idCategoria = :categoria_id 
                     ORDER BY p.nombre";
-            $results = $this->connectionManager->selectAll($sql, ['categoria_id' => $categoriaId]);
+            $results = $this->connectionManager->select($sql, ['categoria_id' => $categoriaId]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -133,14 +109,14 @@ class ProductoRepository
     public function searchByName(string $name): array
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre 
                     FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
-                    WHERE p.nombre LIKE :name OR p.descripcion LIKE :name
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria 
+                    WHERE p.nombre LIKE :name OR p.descripcion LIKE :name OR p.marca LIKE :name
                     ORDER BY p.nombre";
             
             $searchTerm = "%{$name}%";
-            $results = $this->connectionManager->selectAll($sql, ['name' => $searchTerm]);
+            $results = $this->connectionManager->select($sql, ['name' => $searchTerm]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -155,12 +131,12 @@ class ProductoRepository
     public function findActive(): array
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre 
                     FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
-                    WHERE p.activo = 1 
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria 
+                    WHERE p.esActivo = 1 
                     ORDER BY p.nombre";
-            $results = $this->connectionManager->selectAll($sql);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -175,12 +151,12 @@ class ProductoRepository
     public function findLowStock(int $threshold = 10): array
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre 
                     FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
-                    WHERE p.stock <= :threshold AND p.activo = 1
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria 
+                    WHERE p.stock <= :threshold AND p.esActivo = 1
                     ORDER BY p.stock ASC";
-            $results = $this->connectionManager->selectAll($sql, ['threshold' => $threshold]);
+            $results = $this->connectionManager->select($sql, ['threshold' => $threshold]);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -195,12 +171,12 @@ class ProductoRepository
     public function findOutOfStock(): array
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre 
                     FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
-                    WHERE p.stock = 0 AND p.activo = 1
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria 
+                    WHERE p.stock = 0 AND p.esActivo = 1
                     ORDER BY p.nombre";
-            $results = $this->connectionManager->selectAll($sql);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -215,24 +191,21 @@ class ProductoRepository
     public function update(ProductoEntity $producto): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET codigo = :codigo, nombre = :nombre, descripcion = :descripcion, 
-                        precio = :precio, stock = :stock, categoria_id = :categoria_id,
-                        activo = :activo, fecha_modificacion = NOW()
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $producto->getId(),
-                'codigo' => $producto->getCodigo(),
+            $data = [
                 'nombre' => $producto->getNombre(),
+                'marca' => $producto->getMarca(),
                 'descripcion' => $producto->getDescripcion(),
-                'precio' => $producto->getPrecio(),
+                'idCategoria' => $producto->getIdCategoria(),
                 'stock' => $producto->getStock(),
-                'categoria_id' => $producto->getCategoriaId(),
-                'activo' => $producto->isActivo() ? 1 : 0
+                'precio_unitario' => $producto->getPrecioUnitario(),
+                'esActivo' => $producto->getEsActivo() ? 1 : 0
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idProducto = :id";
+            $whereParams = ['id' => $producto->getIdProducto()];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating producto: " . $e->getMessage());
             return false;
@@ -245,8 +218,12 @@ class ProductoRepository
     public function updateStock(int $id, int $newStock): bool
     {
         try {
-            $sql = "UPDATE {$this->table} SET stock = :stock, fecha_modificacion = NOW() WHERE id = :id";
-            return $this->connectionManager->update($sql, ['id' => $id, 'stock' => $newStock]);
+            $data = ['stock' => $newStock];
+            $where = "idProducto = :id";
+            $whereParams = ['id' => $id];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating stock: " . $e->getMessage());
             return false;
@@ -260,11 +237,15 @@ class ProductoRepository
     {
         try {
             $sql = "UPDATE {$this->table} 
-                    SET stock = stock - :quantity, fecha_modificacion = NOW() 
-                    WHERE id = :id AND stock >= :quantity";
+                    SET stock = stock - :quantity
+                    WHERE idProducto = :id AND stock >= :quantity2";
             
-            $params = ['id' => $id, 'quantity' => $quantity];
-            return $this->connectionManager->update($sql, $params);
+            $params = ['id' => $id, 'quantity' => $quantity, 'quantity2' => $quantity];
+            
+            $stmt = $this->connectionManager->getDatabase()->prepare($sql);
+            $stmt->execute($params);
+            
+            return $stmt->rowCount() > 0;
         } catch (Exception $e) {
             error_log("Error reducing stock: " . $e->getMessage());
             return false;
@@ -278,11 +259,15 @@ class ProductoRepository
     {
         try {
             $sql = "UPDATE {$this->table} 
-                    SET stock = stock + :quantity, fecha_modificacion = NOW() 
-                    WHERE id = :id";
+                    SET stock = stock + :quantity
+                    WHERE idProducto = :id";
             
             $params = ['id' => $id, 'quantity' => $quantity];
-            return $this->connectionManager->update($sql, $params);
+            
+            $stmt = $this->connectionManager->getDatabase()->prepare($sql);
+            $stmt->execute($params);
+            
+            return $stmt->rowCount() > 0;
         } catch (Exception $e) {
             error_log("Error increasing stock: " . $e->getMessage());
             return false;
@@ -295,29 +280,33 @@ class ProductoRepository
     public function delete(int $id): bool
     {
         try {
-            $sql = "UPDATE {$this->table} SET activo = 0, fecha_modificacion = NOW() WHERE id = :id";
-            return $this->connectionManager->update($sql, ['id' => $id]);
+            $data = ['esActivo' => 0];
+            $where = "idProducto = :id";
+            $whereParams = ['id' => $id];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting producto: " . $e->getMessage());
             return false;
         }
     }
-
     /**
-     * Verificar si existe código de producto
-     */
-    public function existsByCode(string $codigo): bool
-    {
-        try {
-            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE codigo = :codigo";
-            $result = $this->connectionManager->selectOne($sql, ['codigo' => $codigo]);
-            
-            return ($result['count'] ?? 0) > 0;
-        } catch (Exception $e) {
-            error_log("Error checking codigo existence: " . $e->getMessage());
-            return false;
-        }
+ * Activar producto
+ */
+public function activate(int $id): bool
+{
+    try {
+        $data = ['esActivo' => 1];
+        $where = "idProducto = :id";
+        $whereParams = ['id' => $id];
+        
+        return $this->connectionManager->update($this->table, $data, $where, $whereParams);
+    } catch (Exception $e) {
+        error_log("Error activating producto: " . $e->getMessage());
+        return false;
     }
+}
 
     /**
      * Obtener productos más vendidos
@@ -325,17 +314,19 @@ class ProductoRepository
     public function getMostSold(int $limit = 10): array
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre, 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre, 
                            SUM(dv.cantidad) as total_vendido
                     FROM {$this->table} p
-                    LEFT JOIN categoria c ON p.categoria_id = c.id
-                    INNER JOIN detalleventa dv ON p.id = dv.producto_id
-                    WHERE p.activo = 1
-                    GROUP BY p.id
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria
+                    INNER JOIN detalleventa dv ON p.idProducto = dv.idProducto
+                    WHERE p.esActivo = 1
+                    GROUP BY p.idProducto, p.nombre, p.marca, p.descripcion, 
+                             p.idCategoria, p.stock, p.precio_unitario, 
+                             p.esActivo, p.fechaRegistro, c.descripcion
                     ORDER BY total_vendido DESC
-                    LIMIT :limit";
+                    LIMIT {$limit}";
                     
-            $results = $this->connectionManager->selectAll($sql, ['limit' => $limit]);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -350,14 +341,14 @@ class ProductoRepository
     public function findByPriceRange(float $minPrice, float $maxPrice): array
     {
         try {
-            $sql = "SELECT p.*, c.nombre as categoria_nombre 
+            $sql = "SELECT p.*, c.descripcion as categoria_nombre 
                     FROM {$this->table} p 
-                    LEFT JOIN categoria c ON p.categoria_id = c.id 
-                    WHERE p.precio BETWEEN :min_price AND :max_price AND p.activo = 1
-                    ORDER BY p.precio ASC";
+                    LEFT JOIN categoria c ON p.idCategoria = c.idCategoria 
+                    WHERE p.precio_unitario BETWEEN :min_price AND :max_price AND p.esActivo = 1
+                    ORDER BY p.precio_unitario ASC";
                     
             $params = ['min_price' => $minPrice, 'max_price' => $maxPrice];
-            $results = $this->connectionManager->selectAll($sql, $params);
+            $results = $this->connectionManager->select($sql, $params);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -367,21 +358,74 @@ class ProductoRepository
     }
 
     /**
+     * Contar productos por categoría
+     */
+    public function countByCategory(int $categoriaId): int
+    {
+        try {
+            return $this->connectionManager->count(
+                $this->table,
+                'idCategoria = :categoria_id',
+                ['categoria_id' => $categoriaId]
+            );
+        } catch (Exception $e) {
+            error_log("Error counting by category: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
      * Mapear datos de BD a entidad
      */
     private function mapToEntity(array $data): ProductoEntity
     {
         $producto = new ProductoEntity();
-        $producto->setId($data['id']);
-        $producto->setCodigo($data['codigo']);
-        $producto->setNombre($data['nombre']);
-        $producto->setDescripcion($data['descripcion']);
-        $producto->setPrecio($data['precio']);
-        $producto->setStock($data['stock']);
-        $producto->setCategoriaId($data['categoria_id']);
-        $producto->setActivo((bool)$data['activo']);
-        $producto->setFechaCreacion($data['fecha_creacion']);
-        $producto->setFechaModificacion($data['fecha_modificacion']);
+        
+        if (isset($data['idProducto'])) {
+            $producto->setIdProducto((int)$data['idProducto']);
+        }
+        
+        if (isset($data['nombre'])) {
+            $producto->setNombre($data['nombre']);
+        }
+        
+        if (isset($data['marca'])) {
+            $producto->setMarca($data['marca']);
+        }
+        
+        if (isset($data['descripcion'])) {
+            $producto->setDescripcion($data['descripcion']);
+        }
+        
+        if (isset($data['idCategoria'])) {
+            $producto->setIdCategoria((int)$data['idCategoria']);
+        }
+        
+        if (isset($data['stock'])) {
+            $producto->setStock((int)$data['stock']);
+        }
+        
+        if (isset($data['precio_unitario'])) {
+            $producto->setPrecioUnitario((float)$data['precio_unitario']);
+        }
+        
+        if (isset($data['esActivo'])) {
+            // Manejo del tipo bit de MySQL
+            $esActivo = $data['esActivo'];
+            if (is_string($esActivo)) {
+                $producto->setEsActivo($esActivo !== "\x00" && $esActivo !== '0');
+            } else {
+                $producto->setEsActivo((bool)$esActivo);
+            }
+        }
+        
+        if (isset($data['fechaRegistro'])) {
+            try {
+                $producto->setFechaRegistro(new \DateTime($data['fechaRegistro']));
+            } catch (\Exception $e) {
+                $producto->setFechaRegistro(new \DateTime());
+            }
+        }
         
         return $producto;
     }

@@ -22,9 +22,7 @@ class DetalleUniformeEntity implements DetalleUniformeEntityInterface
         ?string $talla = null,
         ?string $genero = null,
         ?string $nombreCamisola = null,
-        ?string $numeroC
-
-amisola = null,
+        ?string $numeroCamisola = null,
         ?string $nombreAbajo = null,
         ?int $cantidad = 0,
         ?float $conMedidas = 0.0
@@ -34,7 +32,7 @@ amisola = null,
         $this->talla = $talla;
         $this->genero = $genero;
         $this->nombreCamisola = $nombreCamisola;
-        $this->numeroC amisola = $numeroC amisola;
+        $this->numeroCamisola = $numeroCamisola;
         $this->nombreAbajo = $nombreAbajo;
         $this->cantidad = $cantidad ?? 0;
         $this->conMedidas = $conMedidas ?? 0.0;
@@ -68,7 +66,7 @@ amisola = null,
 
     public function getNumeroCamisola(): ?string
     {
-        return $this->numeroC amisola;
+        return $this->numeroCamisola;
     }
 
     public function getNombreAbajo(): ?string

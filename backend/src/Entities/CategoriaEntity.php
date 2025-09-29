@@ -64,6 +64,21 @@ class CategoriaEntity implements CategoriaEntityInterface
     {
         $this->fechaRegistro = $fechaRegistro;
     }
+// Agregar después del setFechaRegistro existente
+public function setFechaRegistroFromString(?string $fecha): void
+{
+    if ($fecha !== null) {
+        try {
+            $this->fechaRegistro = new \DateTime($fecha);
+        } catch (\Exception $e) {
+            $this->fechaRegistro = new \DateTime();
+        }
+    } else {
+        $this->fechaRegistro = null;
+    }
+}
+
+
 
     // Métodos de utilidad
     public function toArray(): array

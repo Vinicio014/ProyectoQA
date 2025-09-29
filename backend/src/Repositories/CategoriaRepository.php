@@ -22,16 +22,15 @@ class CategoriaRepository
     public function create(CategoriaEntity $categoria): ?CategoriaEntity
     {
         try {
-            $sql = "INSERT INTO {$this->table} (nombre, descripcion, activo, fecha_creacion) 
-                    VALUES (:nombre, :descripcion, :activo, NOW())";
-            
-            $params = [
-                'nombre' => $categoria->getNombre(),
+            // Preparar datos según estructura de BD
+            $data = [
                 'descripcion' => $categoria->getDescripcion(),
-                'activo' => $categoria->isActivo() ? 1 : 0
+                'esActivo' => $categoria->getEsActivo() ? 1 : 0
+                // fechaRegistro se auto-genera con DEFAULT CURRENT_TIMESTAMP
             ];
 
-            $id = $this->connectionManager->insert($sql, $params);
+            // Usar el método insert de ConnectionManager
+            $id = $this->connectionManager->insert($this->table, $data);
             
             if ($id) {
                 return $this->findById($id);
@@ -50,7 +49,7 @@ class CategoriaRepository
     public function findById(int $id): ?CategoriaEntity
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE id = :id";
+            $sql = "SELECT * FROM {$this->table} WHERE idCategoria = :id";
             $result = $this->connectionManager->selectOne($sql, ['id' => $id]);
             
             return $result ? $this->mapToEntity($result) : null;
@@ -61,13 +60,13 @@ class CategoriaRepository
     }
 
     /**
-     * Obtener categoría por nombre
+     * Obtener categoría por descripción
      */
-    public function findByName(string $nombre): ?CategoriaEntity
+    public function findByName(string $descripcion): ?CategoriaEntity
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE nombre = :nombre";
-            $result = $this->connectionManager->selectOne($sql, ['nombre' => $nombre]);
+            $sql = "SELECT * FROM {$this->table} WHERE descripcion = :descripcion";
+            $result = $this->connectionManager->selectOne($sql, ['descripcion' => $descripcion]);
             
             return $result ? $this->mapToEntity($result) : null;
         } catch (Exception $e) {
@@ -82,8 +81,8 @@ class CategoriaRepository
     public function findAll(): array
     {
         try {
-            $sql = "SELECT * FROM {$this->table} ORDER BY nombre";
-            $results = $this->connectionManager->selectAll($sql);
+            $sql = "SELECT * FROM {$this->table} ORDER BY descripcion";
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -98,8 +97,8 @@ class CategoriaRepository
     public function findActive(): array
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE activo = 1 ORDER BY nombre";
-            $results = $this->connectionManager->selectAll($sql);
+            $sql = "SELECT * FROM {$this->table} WHERE esActivo = 1 ORDER BY descripcion";
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -116,10 +115,10 @@ class CategoriaRepository
         try {
             $sql = "SELECT DISTINCT c.* 
                     FROM {$this->table} c 
-                    INNER JOIN producto p ON c.id = p.categoria_id 
-                    WHERE c.activo = 1 AND p.activo = 1
-                    ORDER BY c.nombre";
-            $results = $this->connectionManager->selectAll($sql);
+                    INNER JOIN producto p ON c.idCategoria = p.idCategoria 
+                    WHERE c.esActivo = 1 AND p.esActivo = 1
+                    ORDER BY c.descripcion";
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -134,19 +133,16 @@ class CategoriaRepository
     public function update(CategoriaEntity $categoria): bool
     {
         try {
-            $sql = "UPDATE {$this->table} 
-                    SET nombre = :nombre, descripcion = :descripcion, activo = :activo,
-                        fecha_modificacion = NOW()
-                    WHERE id = :id";
-            
-            $params = [
-                'id' => $categoria->getId(),
-                'nombre' => $categoria->getNombre(),
+            $data = [
                 'descripcion' => $categoria->getDescripcion(),
-                'activo' => $categoria->isActivo() ? 1 : 0
+                'esActivo' => $categoria->getEsActivo() ? 1 : 0
             ];
 
-            return $this->connectionManager->update($sql, $params);
+            $where = "idCategoria = :id";
+            $whereParams = ['id' => $categoria->getIdCategoria()];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error updating categoria: " . $e->getMessage());
             return false;
@@ -159,22 +155,42 @@ class CategoriaRepository
     public function delete(int $id): bool
     {
         try {
-            $sql = "UPDATE {$this->table} SET activo = 0, fecha_modificacion = NOW() WHERE id = :id";
-            return $this->connectionManager->update($sql, ['id' => $id]);
+            $data = ['esActivo' => 0];
+            $where = "idCategoria = :id";
+            $whereParams = ['id' => $id];
+
+            $rowCount = $this->connectionManager->update($this->table, $data, $where, $whereParams);
+            return $rowCount > 0;
         } catch (Exception $e) {
             error_log("Error deleting categoria: " . $e->getMessage());
             return false;
         }
     }
+    /**
+ * Activar categoría
+ */
+public function activate(int $id): bool
+{
+    try {
+        $data = ['esActivo' => 1];
+        $where = "idCategoria = :id";
+        $whereParams = ['id' => $id];
+        
+        return $this->connectionManager->update($this->table, $data, $where, $whereParams);
+    } catch (Exception $e) {
+        error_log("Error activating categoria: " . $e->getMessage());
+        return false;
+    }
+}
 
     /**
-     * Verificar si existe nombre de categoría
+     * Verificar si existe descripción de categoría
      */
-    public function existsByName(string $nombre): bool
+    public function existsByName(string $descripcion): bool
     {
         try {
-            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE nombre = :nombre";
-            $result = $this->connectionManager->selectOne($sql, ['nombre' => $nombre]);
+            $sql = "SELECT COUNT(*) as count FROM {$this->table} WHERE descripcion = :descripcion";
+            $result = $this->connectionManager->selectOne($sql, ['descripcion' => $descripcion]);
             
             return ($result['count'] ?? 0) > 0;
         } catch (Exception $e) {
@@ -189,10 +205,13 @@ class CategoriaRepository
     public function countProducts(int $categoriaId): int
     {
         try {
-            $sql = "SELECT COUNT(*) as count FROM producto WHERE categoria_id = :categoria_id AND activo = 1";
-            $result = $this->connectionManager->selectOne($sql, ['categoria_id' => $categoriaId]);
+            $count = $this->connectionManager->count(
+                'producto', 
+                'idCategoria = :categoria_id AND esActivo = 1',
+                ['categoria_id' => $categoriaId]
+            );
             
-            return (int)($result['count'] ?? 0);
+            return $count;
         } catch (Exception $e) {
             error_log("Error counting products by categoria: " . $e->getMessage());
             return 0;
@@ -205,16 +224,16 @@ class CategoriaRepository
     public function getMostSoldCategories(int $limit = 5): array
     {
         try {
-            $sql = "SELECT c.*, COUNT(dv.id) as total_vendidos
+            $sql = "SELECT c.*, COUNT(dv.idDetalleVenta) as total_vendidos
                     FROM {$this->table} c
-                    INNER JOIN producto p ON c.id = p.categoria_id
-                    INNER JOIN detalleventa dv ON p.id = dv.producto_id
-                    WHERE c.activo = 1 AND p.activo = 1
-                    GROUP BY c.id
+                    INNER JOIN producto p ON c.idCategoria = p.idCategoria
+                    INNER JOIN detalleventa dv ON p.idProducto = dv.idProducto
+                    WHERE c.esActivo = 1 AND p.esActivo = 1
+                    GROUP BY c.idCategoria, c.descripcion, c.esActivo, c.fechaRegistro
                     ORDER BY total_vendidos DESC
-                    LIMIT :limit";
+                    LIMIT {$limit}";
                     
-            $results = $this->connectionManager->selectAll($sql, ['limit' => $limit]);
+            $results = $this->connectionManager->select($sql);
             
             return array_map([$this, 'mapToEntity'], $results);
         } catch (Exception $e) {
@@ -229,12 +248,40 @@ class CategoriaRepository
     private function mapToEntity(array $data): CategoriaEntity
     {
         $categoria = new CategoriaEntity();
-        $categoria->setId($data['id']);
-        $categoria->setNombre($data['nombre']);
-        $categoria->setDescripcion($data['descripcion']);
-        $categoria->setActivo((bool)$data['activo']);
-        $categoria->setFechaCreacion($data['fecha_creacion']);
-        $categoria->setFechaModificacion($data['fecha_modificacion']);
+        
+        // Mapear ID
+        if (isset($data['idCategoria'])) {
+            $categoria->setIdCategoria((int)$data['idCategoria']);
+        }
+        
+        // Mapear descripción
+        if (isset($data['descripcion'])) {
+            $categoria->setDescripcion($data['descripcion']);
+        }
+        
+        // Mapear esActivo (convertir bit a bool)
+        if (isset($data['esActivo'])) {
+            // MySQL devuelve bit como string "\x00" o "\x01"
+            $esActivo = $data['esActivo'];
+            if (is_string($esActivo)) {
+                $categoria->setEsActivo($esActivo !== "\x00" && $esActivo !== '0');
+            } else {
+                $categoria->setEsActivo((bool)$esActivo);
+            }
+        }
+        
+        // Mapear fechaRegistro
+        if (isset($data['fechaRegistro'])) {
+            if (method_exists($categoria, 'setFechaRegistroFromString')) {
+                $categoria->setFechaRegistroFromString($data['fechaRegistro']);
+            } else {
+                try {
+                    $categoria->setFechaRegistro(new \DateTime($data['fechaRegistro']));
+                } catch (\Exception $e) {
+                    $categoria->setFechaRegistro(new \DateTime());
+                }
+            }
+        }
         
         return $categoria;
     }

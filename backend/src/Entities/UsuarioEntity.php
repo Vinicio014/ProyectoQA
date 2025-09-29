@@ -120,6 +120,15 @@ class UsuarioEntity implements UsuarioEntityInterface
 
     public static function fromArray(array $data): self
     {
+        $fechaRegistro = null;
+        if (isset($data['fechaRegistro'])) {
+            try {
+                $fechaRegistro = new \DateTime($data['fechaRegistro']);
+            } catch (\Exception $e) {
+                $fechaRegistro = new \DateTime();
+            }
+        }
+
         return new self(
             $data['idUsuario'] ?? null,
             $data['nombre'] ?? null,
@@ -127,7 +136,7 @@ class UsuarioEntity implements UsuarioEntityInterface
             $data['idRol'] ?? null,
             $data['contrasenia'] ?? null,
             $data['esActivo'] ?? true,
-            isset($data['fechaRegistro']) ? new \DateTime($data['fechaRegistro']) : null
+            $fechaRegistro
         );
     }
 
@@ -142,13 +151,28 @@ class UsuarioEntity implements UsuarioEntityInterface
 
     public function hashContrasenia(): void
     {
-        if (!empty($this->contrasenia)) {
+        if (!empty($this->contrasenia) && !$this->isContraseniaHashed()) {
             $this->contrasenia = password_hash($this->contrasenia, PASSWORD_DEFAULT);
         }
     }
 
     public function verificarContrasenia(string $contrasenia): bool
     {
+        if (empty($this->contrasenia)) {
+            return false;
+        }
         return password_verify($contrasenia, $this->contrasenia);
+    }
+
+    /**
+     * Verificar si la contraseña ya está hasheada
+     */
+    private function isContraseniaHashed(): bool
+    {
+        // Las contraseñas hasheadas con password_hash comienzan con $2y$
+        return !empty($this->contrasenia) && 
+               (str_starts_with($this->contrasenia, '$2y$') || 
+                str_starts_with($this->contrasenia, '$2a$') || 
+                str_starts_with($this->contrasenia, '$2b$'));
     }
 }

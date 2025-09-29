@@ -99,19 +99,28 @@ class VentaEntity implements VentaEntityInterface
             'fechaRegistro' => $this->fechaRegistro?->format('Y-m-d H:i:s'),
             'idUsuario' => $this->idUsuario,
             'idCliente' => $this->idCliente,
-            'Total' => $this->total,
+            'total' => $this->total,
             'impuestosTotal' => $this->impuestosTotal
         ];
     }
 
     public static function fromArray(array $data): self
     {
+        $fechaRegistro = null;
+        if (isset($data['fechaRegistro'])) {
+            try {
+                $fechaRegistro = new \DateTime($data['fechaRegistro']);
+            } catch (\Exception $e) {
+                $fechaRegistro = new \DateTime();
+            }
+        }
+
         return new self(
             $data['idVenta'] ?? null,
-            isset($data['fechaRegistro']) ? new \DateTime($data['fechaRegistro']) : null,
+            $fechaRegistro,
             $data['idUsuario'] ?? null,
             $data['idCliente'] ?? null,
-            $data['Total'] ?? 0.0,
+            $data['total'] ?? 0.0,
             $data['impuestosTotal'] ?? 0.0
         );
     }

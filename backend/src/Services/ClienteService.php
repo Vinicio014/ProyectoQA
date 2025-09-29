@@ -1,9 +1,9 @@
 <?php
 
-namespace Proyecto\Services;
+namespace App\Services;
 
-use Proyecto\Entities\ClienteEntity;
-use Proyecto\Repositories\ClienteRepository;
+use App\Entities\ClienteEntity;
+use App\Repositories\ClienteRepository;
 use Exception;
 
 /**
@@ -25,41 +25,17 @@ class ClienteService
     public function crearCliente(array $datosCliente): array
     {
         try {
-            // Validar que el email no exista si se proporciona
-            if (!empty($datosCliente['email']) && $this->existeClientePorEmail($datosCliente['email'])) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Ya existe un cliente con ese email',
-                    'datos' => null
-                ];
-            }
-
-            // Validar documento único si se proporciona
-            if (!empty($datosCliente['documento']) && $this->existeClientePorDocumento($datosCliente['documento'])) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Ya existe un cliente con ese documento',
-                    'datos' => null
-                ];
-            }
-
             $cliente = new ClienteEntity();
-            $cliente->setNombre($datosCliente['nombre']);
-            $cliente->setApellido($datosCliente['apellido']);
-            $cliente->setEmail($datosCliente['email'] ?? '');
-            $cliente->setTelefono($datosCliente['telefono'] ?? '');
-            $cliente->setDocumento($datosCliente['documento'] ?? '');
-            $cliente->setTipoDocumento($datosCliente['tipo_documento'] ?? 'CEDULA');
-            $cliente->setDireccion($datosCliente['direccion'] ?? '');
-            $cliente->setCiudad($datosCliente['ciudad'] ?? '');
-            $cliente->setEstado($datosCliente['estado'] ?? 'ACTIVO');
+            $cliente->setPrimerNombre($datosCliente['primer_nombre']);
+            $cliente->setPrimerApellido($datosCliente['primer_apellido']);
+            $cliente->setTelefono((int)$datosCliente['telefono']);
 
-            $clienteCreado = $this->clienteRepository->crear($cliente);
+            $clienteCreado = $this->clienteRepository->create($cliente);
 
             return [
                 'exito' => true,
                 'mensaje' => 'Cliente creado exitosamente',
-                'datos' => $clienteCreado->toArray()
+                'datos' => $clienteCreado ? $clienteCreado->toArray() : null
             ];
 
         } catch (Exception $e) {
@@ -77,7 +53,7 @@ class ClienteService
     public function obtenerClientePorId(int $id): array
     {
         try {
-            $cliente = $this->clienteRepository->obtenerPorId($id);
+            $cliente = $this->clienteRepository->findById($id);
 
             if (!$cliente) {
                 return [
@@ -103,12 +79,12 @@ class ClienteService
     }
 
     /**
-     * Buscar clientes por término
+     * Buscar clientes por nombre
      */
     public function buscarClientes(string $termino): array
     {
         try {
-            $clientes = $this->clienteRepository->buscarPorTermino($termino);
+            $clientes = $this->clienteRepository->searchByName($termino);
             
             return [
                 'exito' => true,
@@ -126,12 +102,12 @@ class ClienteService
     }
 
     /**
-     * Listar clientes con filtros
+     * Listar todos los clientes
      */
-    public function listarClientes(array $filtros = []): array
+    public function listarClientes(): array
     {
         try {
-            $clientes = $this->clienteRepository->listarConFiltros($filtros);
+            $clientes = $this->clienteRepository->findAll();
             
             return [
                 'exito' => true,
@@ -154,7 +130,7 @@ class ClienteService
     public function actualizarCliente(int $id, array $datosCliente): array
     {
         try {
-            $cliente = $this->clienteRepository->obtenerPorId($id);
+            $cliente = $this->clienteRepository->findById($id);
 
             if (!$cliente) {
                 return [
@@ -164,63 +140,32 @@ class ClienteService
                 ];
             }
 
-            // Validar email único si se está cambiando
-            if (isset($datosCliente['email']) && !empty($datosCliente['email']) && $datosCliente['email'] !== $cliente->getEmail()) {
-                if ($this->existeClientePorEmail($datosCliente['email'])) {
-                    return [
-                        'exito' => false,
-                        'mensaje' => 'Ya existe un cliente con ese email',
-                        'datos' => null
-                    ];
-                }
-            }
-
-            // Validar documento único si se está cambiando
-            if (isset($datosCliente['documento']) && !empty($datosCliente['documento']) && $datosCliente['documento'] !== $cliente->getDocumento()) {
-                if ($this->existeClientePorDocumento($datosCliente['documento'])) {
-                    return [
-                        'exito' => false,
-                        'mensaje' => 'Ya existe un cliente con ese documento',
-                        'datos' => null
-                    ];
-                }
-            }
-
             // Actualizar campos
-            if (isset($datosCliente['nombre'])) {
-                $cliente->setNombre($datosCliente['nombre']);
+            if (isset($datosCliente['primer_nombre'])) {
+                $cliente->setPrimerNombre($datosCliente['primer_nombre']);
             }
-            if (isset($datosCliente['apellido'])) {
-                $cliente->setApellido($datosCliente['apellido']);
-            }
-            if (isset($datosCliente['email'])) {
-                $cliente->setEmail($datosCliente['email']);
+            if (isset($datosCliente['primer_apellido'])) {
+                $cliente->setPrimerApellido($datosCliente['primer_apellido']);
             }
             if (isset($datosCliente['telefono'])) {
-                $cliente->setTelefono($datosCliente['telefono']);
-            }
-            if (isset($datosCliente['documento'])) {
-                $cliente->setDocumento($datosCliente['documento']);
-            }
-            if (isset($datosCliente['tipo_documento'])) {
-                $cliente->setTipoDocumento($datosCliente['tipo_documento']);
-            }
-            if (isset($datosCliente['direccion'])) {
-                $cliente->setDireccion($datosCliente['direccion']);
-            }
-            if (isset($datosCliente['ciudad'])) {
-                $cliente->setCiudad($datosCliente['ciudad']);
-            }
-            if (isset($datosCliente['estado'])) {
-                $cliente->setEstado($datosCliente['estado']);
+                $cliente->setTelefono((int)$datosCliente['telefono']);
             }
 
-            $clienteActualizado = $this->clienteRepository->actualizar($cliente);
+            $resultado = $this->clienteRepository->update($cliente);
+
+            if ($resultado) {
+                $clienteActualizado = $this->clienteRepository->findById($id);
+                return [
+                    'exito' => true,
+                    'mensaje' => 'Cliente actualizado exitosamente',
+                    'datos' => $clienteActualizado->toArray()
+                ];
+            }
 
             return [
-                'exito' => true,
-                'mensaje' => 'Cliente actualizado exitosamente',
-                'datos' => $clienteActualizado->toArray()
+                'exito' => false,
+                'mensaje' => 'No se pudo actualizar el cliente',
+                'datos' => null
             ];
 
         } catch (Exception $e) {
@@ -233,21 +178,12 @@ class ClienteService
     }
 
     /**
-     * Eliminar cliente
+     * Eliminar cliente (hard delete)
      */
     public function eliminarCliente(int $id): array
     {
         try {
-            // Verificar que no tenga pedidos o ventas pendientes
-            if ($this->tieneTransaccionesPendientes($id)) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'No se puede eliminar el cliente porque tiene transacciones pendientes',
-                    'datos' => null
-                ];
-            }
-
-            $resultado = $this->clienteRepository->eliminar($id);
+            $resultado = $this->clienteRepository->delete($id);
 
             if ($resultado) {
                 return [
@@ -273,62 +209,18 @@ class ClienteService
     }
 
     /**
-     * Obtener historial de compras del cliente
-     */
-    public function obtenerHistorialCompras(int $clienteId): array
-    {
-        try {
-            $cliente = $this->clienteRepository->obtenerPorId($clienteId);
-
-            if (!$cliente) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Cliente no encontrado',
-                    'datos' => null
-                ];
-            }
-
-            // Esta funcionalidad se implementará cuando tengamos VentaRepository y PedidoRepository
-            $historial = [
-                'cliente' => $cliente->toArray(),
-                'ventas' => [], // Se llenará con VentaRepository
-                'pedidos' => [], // Se llenará con PedidoRepository
-                'estadisticas' => [
-                    'total_compras' => 0,
-                    'monto_total' => 0,
-                    'ultima_compra' => null
-                ]
-            ];
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Historial obtenido exitosamente',
-                'datos' => $historial
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener historial: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
-    }
-
-    /**
      * Obtener clientes para select/dropdown
      */
     public function obtenerClientesParaSelect(): array
     {
         try {
-            $clientes = $this->clienteRepository->listarPorEstado('ACTIVO');
+            $clientes = $this->clienteRepository->findAll();
             
             $clientesSelect = [];
             foreach ($clientes as $cliente) {
                 $clientesSelect[] = [
-                    'id' => $cliente->getId(),
-                    'nombre_completo' => $cliente->getNombre() . ' ' . $cliente->getApellido(),
-                    'documento' => $cliente->getDocumento(),
+                    'id' => $cliente->getIdCliente(),
+                    'nombre_completo' => $cliente->getPrimerNombre() . ' ' . $cliente->getPrimerApellido(),
                     'telefono' => $cliente->getTelefono()
                 ];
             }
@@ -349,111 +241,52 @@ class ClienteService
     }
 
     /**
+     * Obtener clientes por género
+     */
+    public function obtenerClientesPorGenero(string $genero): array
+    {
+        try {
+            $clientes = $this->clienteRepository->findByGender($genero);
+            
+            return [
+                'exito' => true,
+                'mensaje' => 'Clientes obtenidos exitosamente',
+                'datos' => array_map(fn($cliente) => $cliente->toArray(), $clientes)
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'exito' => false,
+                'mensaje' => 'Error al obtener clientes: ' . $e->getMessage(),
+                'datos' => []
+            ];
+        }
+    }
+
+    /**
      * Validar datos de cliente
      */
     public function validarDatosCliente(array $datos): array
     {
         $errores = [];
 
-        if (empty($datos['nombre'])) {
-            $errores[] = 'El nombre es requerido';
+        if (empty($datos['primer_nombre'])) {
+            $errores[] = 'El primer nombre es requerido';
         }
 
-        if (empty($datos['apellido'])) {
-            $errores[] = 'El apellido es requerido';
+        if (empty($datos['primer_apellido'])) {
+            $errores[] = 'El primer apellido es requerido';
         }
 
-        if (!empty($datos['email']) && !filter_var($datos['email'], FILTER_VALIDATE_EMAIL)) {
-            $errores[] = 'El email no es válido';
-        }
-
-        if (!empty($datos['documento']) && strlen($datos['documento']) < 6) {
-            $errores[] = 'El documento debe tener al menos 6 caracteres';
+        if (empty($datos['telefono'])) {
+            $errores[] = 'El teléfono es requerido';
+        } elseif (!is_numeric($datos['telefono'])) {
+            $errores[] = 'El teléfono debe ser numérico';
         }
 
         return [
             'valido' => empty($errores),
             'errores' => $errores
         ];
-    }
-
-    /**
-     * Verificar si existe cliente por email
-     */
-    private function existeClientePorEmail(string $email): bool
-    {
-        try {
-            $cliente = $this->clienteRepository->obtenerPorEmail($email);
-            return $cliente !== null;
-        } catch (Exception $e) {
-            return false;
-        }
-    }
-
-    /**
-     * Verificar si existe cliente por documento
-     */
-    private function existeClientePorDocumento(string $documento): bool
-    {
-        try {
-            $cliente = $this->clienteRepository->obtenerPorDocumento($documento);
-            return $cliente !== null;
-        } catch (Exception $e) {
-            return false;
-        }
-    }
-
-    /**
-     * Verificar si el cliente tiene transacciones pendientes
-     */
-    private function tieneTransaccionesPendientes(int $clienteId): bool
-    {
-        try {
-            // Esta lógica se implementará cuando tengamos VentaRepository y PedidoRepository
-            // Por ahora retornamos false
-            return false;
-        } catch (Exception $e) {
-            return true; // Por seguridad
-        }
-    }
-
-    /**
-     * Obtener estadísticas del cliente
-     */
-    public function obtenerEstadisticasCliente(int $clienteId): array
-    {
-        try {
-            $cliente = $this->clienteRepository->obtenerPorId($clienteId);
-
-            if (!$cliente) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'Cliente no encontrado',
-                    'datos' => null
-                ];
-            }
-
-            $estadisticas = [
-                'fecha_registro' => $cliente->getFechaCreacion()->format('d/m/Y'),
-                'estado' => $cliente->getEstado(),
-                'total_pedidos' => 0, // Se calculará con PedidoRepository
-                'total_ventas' => 0, // Se calculará con VentaRepository
-                'monto_total_compras' => 0, // Se calculará con VentaRepository
-                'producto_mas_comprado' => null // Se calculará con DetalleVentaRepository
-            ];
-
-            return [
-                'exito' => true,
-                'mensaje' => 'Estadísticas obtenidas exitosamente',
-                'datos' => $estadisticas
-            ];
-
-        } catch (Exception $e) {
-            return [
-                'exito' => false,
-                'mensaje' => 'Error al obtener estadísticas: ' . $e->getMessage(),
-                'datos' => null
-            ];
-        }
     }
 }
