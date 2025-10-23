@@ -4,6 +4,7 @@
 create database if not exists Uniformes_deportivos;
 use Uniformes_deportivos;
 
+select * from pedido;
 -- Tabla rol (debe crearse primero por dependencias)
 CREATE TABLE rol (
     idRol INT AUTO_INCREMENT PRIMARY KEY,
@@ -155,14 +156,16 @@ CREATE TABLE pedido (
     fecha_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     estado_pedido VARCHAR(50) DEFAULT 'Pendiente',
     costo_total_pedido DECIMAL(10,2) NOT NULL,
-    idCliente INT NOT NULL,
+    idUsuario INT NOT NULL,
     fecha_entrega DATETIME,
     monto_pagado DECIMAL(10,2) DEFAULT 0,
     estado_pago VARCHAR(45) DEFAULT 'Pendiente',
-    CONSTRAINT fk_pedido_cliente 
-	FOREIGN KEY (idCliente) REFERENCES cliente(idCliente) 
+    CONSTRAINT fk_pedido_usuario 
+	FOREIGN KEY (idUsuario) REFERENCES usuario(idUsuario) 
 	ON DELETE RESTRICT ON UPDATE CASCADE
 );
+
+
 
 -- DATOS: Pedidos
 INSERT INTO pedido (idCliente, costo_total_pedido, estado_pedido, fecha_entrega, monto_pagado, estado_pago, fecha_pedido) VALUES

@@ -36,6 +36,19 @@
             background: #3b82f6;
             color: white;
         }
+        .producto-item {
+            background: #f8f9fa;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 6px;
+            border-left: 3px solid #3b82f6;
+        }
+        .detalle-uniforme-fields {
+            background: #e3f2fd;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-top: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -48,7 +61,7 @@
                 <a href="productos.html"><i class="fas fa-box"></i> Productos</a>
                 <a href="usuarios.html"><i class="fas fa-users"></i> Usuarios</a>
                 <a href="pedidos.html" class="active"><i class="fas fa-shopping-bag"></i> Pedidos</a>
-                <a href="categorias.html"><i class="fas fa-tags"></i> Categorías</a>
+                <a href="ventas.html"><i class="fas fa-cash-register"></i> Ventas</a>
                 <hr>
                 <a href="#" onclick="cerrarSesion(); return false;"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</a>
             </nav>
@@ -56,13 +69,304 @@
 
         <!-- Contenido Principal -->
         <div class="flex-grow-1 p-4 bg-light">
-            <h1 class="mb-4">Gestión de Pedidos</h1>
-            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1>Gestión de Pedidos</h1>
+                    <p class="text-muted">Administra los pedidos personalizados</p>
+                </div>
+                <button class="btn btn-primary" onclick="abrirModalNuevoPedido()">
+                    <i class="fas fa-plus"></i> Nuevo Pedido
+                </button>
+            </div>
+
+            <!-- Filtros -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <input type="text" class="form-control" id="buscarPedido" placeholder="Buscar por cliente...">
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" id="filtroEstadoPedido">
+                                <option value="">Todos los estados</option>
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="En Proceso">En Proceso</option>
+                                <option value="Completado">Completado</option>
+                                <option value="Cancelado">Cancelado</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" id="filtroEstadoPago">
+                                <option value="">Estado de pago</option>
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="Parcial">Parcial</option>
+                                <option value="Pagado">Pagado</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" class="form-control" id="filtroFechaPedido">
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-secondary w-100" onclick="limpiarFiltrosPedidos()">
+                                <i class="fas fa-times"></i> Limpiar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabla de pedidos -->
             <div class="card">
                 <div class="card-body">
-                    <div class="alert alert-info">
-                        <i class="fas fa-construction"></i> Esta funcionalidad está en desarrollo
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Cliente</th>
+                                    <th>F. Pedido</th>
+                                    <th>F. Entrega</th>
+                                    <th>Total</th>
+                                    <th>Pagado</th>
+                                    <th>Saldo</th>
+                                    <th>Est. Pago</th>
+                                    <th>Est. Pedido</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaPedidos">
+                                <tr>
+                                    <td colspan="10" class="text-center">
+                                        <div class="spinner-border text-primary"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Pedido -->
+    <div class="modal fade" id="modalNuevoPedido" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-shopping-bag"></i> Crear Nuevo Pedido</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Seleccionar Cliente -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">1️⃣ Seleccionar Cliente <span class="text-danger">*</span></label>
+                        <select class="form-select" id="selectClientePedido" required>
+                            <option value="">Seleccionar cliente...</option>
+                        </select>
+                    </div>
+
+                    <!-- Agregar Productos -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">2️⃣ Agregar Productos <span class="text-danger">*</span></label>
+                        <div class="row g-2">
+                            <div class="col-md-5">
+                                <select class="form-select" id="selectProductoPedido">
+                                    <option value="">Seleccionar producto...</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <input type="number" class="form-control" id="cantidadProductoPedido" min="1" value="1" placeholder="Cant.">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="text" class="form-control" id="disenoProductoPedido" placeholder="Diseño general (opcional)">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-success w-100" onclick="agregarProductoAlPedidoNuevo()">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="productosAgregadosPedido" class="mt-3"></div>
+                    </div>
+
+                    <!-- Fecha de Entrega -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">3️⃣ Fecha de Entrega <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="fechaEntregaPedido" required>
+                        </div>
+                    </div>
+
+                    <!-- Anticipo -->
+                    <div class="card bg-light mb-3">
+                        <div class="card-body">
+                            <h6 class="fw-bold">4️⃣ Anticipo <span class="text-danger">*</span></h6>
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <label class="form-label">Monto Anticipo</label>
+                                    <input type="number" class="form-control" id="montoAnticipo" min="0" step="0.01" placeholder="Q0.00">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Método de Pago</label>
+                                    <select class="form-select" id="metodoPagoAnticipo">
+                                        <option value="Efectivo">Efectivo</option>
+                                        <option value="Tarjeta">Tarjeta</option>
+                                        <option value="Transferencia">Transferencia</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Descripción</label>
+                                    <input type="text" class="form-control" id="descripcionAnticipo" placeholder="Ej: Anticipo 50%">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Totales -->
+                    <div class="alert alert-primary">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <strong>TOTAL:</strong> <span class="fs-5" id="totalPedidoNuevo">Q0.00</span>
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Anticipo:</strong> <span class="fs-5" id="anticipoMostrar">Q0.00</span>
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Saldo Pendiente:</strong> <span class="fs-5 text-danger" id="saldoPendiente">Q0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="crearPedidoCompleto()">
+                        <i class="fas fa-check"></i> Crear Pedido
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detalle Pedido -->
+    <div class="modal fade" id="modalDetallePedido" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Detalle del Pedido <span id="detallePedidoNumero"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="contenidoDetallePedido"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Personalizar Uniforme -->
+    <div class="modal fade" id="modalPersonalizarUniforme" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="fas fa-tshirt"></i> Personalizar Uniforme</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="productoPersonalizarIndex">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Talla</label>
+                            <select class="form-select" id="tallaUniforme" required>
+                            <option value="">Seleccionar talla...</option>
+                            <option value="2">2</option>
+                            <option value="4">4</option>
+                            <option value="6">6</option>
+                            <option value="8">8</option>
+                            <option value="10">10</option>
+                            <option value="12">12</option>
+                            <option value="14">14</option>
+                            <option value="XS">XS</option>
+                            <option value="S">S</option>
+                            <option value="M">M</option>
+                            <option value="L">L</option>
+                            <option value="XL">XL</option>
+                            <option value="XXL">XXL</option>
+                            <option value="XXXL">XXXL</option>
+                            <option value="XXXXL">XXXXL</option>
+                        </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Género</label>
+                            <select class="form-select" id="generoUniforme">
+                                <option value="M">Masculino</option>
+                                <option value="F">Femenino</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre en Camisola</label>
+                            <input type="text" class="form-control" id="nombreCamisola" placeholder="Ej: GARCÍA">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Número</label>
+                            <input type="text" class="form-control" id="numeroCamisola" placeholder="Ej: 10">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Texto debajo del número</label>
+                            <input type="text" class="form-control" id="nombreAbajoNumero" placeholder="Opcional">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">¿Con medidas personalizadas?</label>
+                            <select class="form-select" id="conMedidas">
+                                <option value="0">No</option>
+                                <option value="1">Sí</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-info" onclick="guardarPersonalizacion()">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Registrar Pago -->
+    <div class="modal fade" id="modalRegistrarPago" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="fas fa-money-bill"></i> Registrar Pago</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="idPedidoPago">
+                    <div class="mb-3">
+                        <label class="form-label">Monto a Pagar</label>
+                        <input type="number" class="form-control" id="montoPago" min="0" step="0.01" placeholder="Q0.00">
+                        <small class="text-muted">Saldo pendiente: <span id="saldoPendientePago"></span></small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Método de Pago</label>
+                        <select class="form-select" id="metodoPago">
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Tarjeta">Tarjeta</option>
+                            <option value="Transferencia">Transferencia</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <input type="text" class="form-control" id="descripcionPago" placeholder="Ej: Segundo pago">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" onclick="guardarPago()">
+                        <i class="fas fa-check"></i> Registrar
+                    </button>
                 </div>
             </div>
         </div>
@@ -71,5 +375,13 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../../js/auth.js"></script>
     <script src="../../js/admin.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (protegerPagina(true)) {
+                cargarPedidosAdmin();
+                configurarFiltrosPedidos();
+            }
+        });
+    </script>
 </body>
 </html>
