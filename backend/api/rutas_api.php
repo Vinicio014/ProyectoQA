@@ -12,20 +12,37 @@ ini_set('display_errors', 1);
 require_once __DIR__ . '/../conf/database.php';
 
 // Incluir manualmente las clases necesarias con namespaces
+// Entities
 require_once __DIR__ . '/../src/Entities/ProductoEntity.php';
 require_once __DIR__ . '/../src/Entities/CategoriaEntity.php';
+require_once __DIR__ . '/../src/Entities/UsuarioEntity.php';
+require_once __DIR__ . '/../src/Entities/RolEntity.php';
+
+// Repositories
 require_once __DIR__ . '/../src/Repositories/ProductoRepository.php';
 require_once __DIR__ . '/../src/Repositories/CategoriaRepository.php';
+require_once __DIR__ . '/../src/Repositories/UsuarioRepository.php';
+require_once __DIR__ . '/../src/Repositories/RolRepository.php';
+
+// Services
 require_once __DIR__ . '/../src/Services/ProductoService.php';
+require_once __DIR__ . '/../src/Services/UsuarioService.php';
+
+// Infrastructure
 require_once __DIR__ . '/../src/Infraestructura/ConnectionManager.php';
 require_once __DIR__ . '/../src/Infraestructura/DatabaseFactory.php';
 
 // Imports con namespace
 use App\Entities\ProductoEntity;
 use App\Entities\CategoriaEntity;
+use App\Entities\UsuarioEntity;
+use App\Entities\RolEntity;
 use App\Repositories\ProductoRepository;
 use App\Repositories\CategoriaRepository;
+use App\Repositories\UsuarioRepository;
+use App\Repositories\RolRepository;
 use App\Services\ProductoService;
+use App\Services\UsuarioService;
 use App\Infraestructura\ConnectionManager;
 use App\Infraestructura\DatabaseFactory;
 
@@ -147,6 +164,12 @@ class ServiceFactory
                 case 'Categoria':
                     $this->repositories[$nombre] = new CategoriaRepository($this->connectionManager);
                     break;
+                case 'Usuario':
+                    $this->repositories[$nombre] = new UsuarioRepository($this->connectionManager);
+                    break;
+                case 'Rol':
+                    $this->repositories[$nombre] = new RolRepository($this->connectionManager);
+                    break;
                 default:
                     throw new Exception("Repository {$nombre} no encontrado");
             }
@@ -164,7 +187,12 @@ class ServiceFactory
                         $this->crearRepository('Categoria')
                     );
                     break;
-                    
+                case 'Usuario':
+                    $this->services[$nombre] = new UsuarioService(
+                        $this->crearRepository('Usuario'),
+                        $this->crearRepository('Rol')
+                    );
+                    break;
                 default:
                     throw new Exception("Servicio {$nombre} no encontrado");
             }
@@ -336,6 +364,144 @@ class ProductoController extends BaseController
 }
 
 /**
+ * Controller para usuarios
+ */
+class UsuarioController extends BaseController 
+{
+    private UsuarioService $usuarioService;
+    
+    public function __construct(
+        RequestHandler $requestHandler, 
+        ResponseHandler $responseHandler,
+        ServiceFactory $serviceFactory
+    ) {
+        parent::__construct($requestHandler, $responseHandler, $serviceFactory);
+        $this->usuarioService = $this->serviceFactory->crearService('Usuario');
+    }
+    
+    public function manejarRequest(array $ruta): void 
+    {
+        $metodo = $this->requestHandler->obtenerMetodo();
+        $id = $ruta['id'];
+        $accion = $ruta['accion'];
+        
+        switch ($metodo) {
+            case 'GET':
+                $this->manejarGet($id, $accion);
+                break;
+            case 'POST':
+                $this->manejarPost($accion);
+                break;
+            case 'PUT':
+                $this->manejarPut($id);
+                break;
+            case 'PATCH':
+                $this->manejarPatch($id, $accion);
+                break;
+            case 'DELETE':
+                $this->manejarDelete($id);
+                break;
+            default:
+                $this->responseHandler->error('Método no permitido', 405);
+        }
+    }
+    
+    private function manejarGet(?string $id, ?string $accion): void 
+    {
+        $parametros = $this->requestHandler->obtenerParametros();
+        
+        if ($id) {
+            $idValidado = $this->validarId($id);
+            $resultado = $this->usuarioService->obtenerUsuarioPorId($idValidado);
+            $this->responseHandler->enviarRespuesta($resultado);
+            
+        } elseif (isset($parametros['activos'])) {
+            $resultado = $this->usuarioService->listarUsuariosActivos();
+            $this->responseHandler->enviarRespuesta($resultado);
+            
+        } elseif (isset($parametros['rol'])) {
+            $resultado = $this->usuarioService->obtenerUsuariosPorRol((int)$parametros['rol']);
+            $this->responseHandler->enviarRespuesta($resultado);
+            
+        } else {
+            $resultado = $this->usuarioService->listarUsuarios();
+            $this->responseHandler->enviarRespuesta($resultado);
+        }
+    }
+    
+    private function manejarPost(?string $accion): void 
+    {
+        $datos = $this->requestHandler->obtenerDatos();
+        
+        if ($accion === 'login') {
+            // Endpoint de autenticación
+            if (empty($datos['correo']) || empty($datos['contrasenia'])) {
+                $this->responseHandler->error('Correo y contraseña son requeridos');
+            }
+            
+            $resultado = $this->usuarioService->autenticarUsuario(
+                $datos['correo'],
+                $datos['contrasenia']
+            );
+            $this->responseHandler->enviarRespuesta($resultado);
+            
+        } else {
+            // Crear usuario
+            $validacion = $this->usuarioService->validarDatosUsuario($datos);
+            
+            if (!$validacion['valido']) {
+                $this->responseHandler->error(implode(', ', $validacion['errores']));
+            }
+            
+            $resultado = $this->usuarioService->crearUsuario($datos);
+            $codigo = $resultado['exito'] ? 201 : 400;
+            $this->responseHandler->enviarRespuesta($resultado, $codigo);
+        }
+    }
+    
+    private function manejarPut(?string $id): void 
+    {
+        $idValidado = $this->validarId($id);
+        $datos = $this->requestHandler->obtenerDatos();
+        $resultado = $this->usuarioService->actualizarUsuario($idValidado, $datos);
+        $this->responseHandler->enviarRespuesta($resultado);
+    }
+    
+    private function manejarPatch(?string $id, ?string $accion): void 
+    {
+        $idValidado = $this->validarId($id);
+        $datos = $this->requestHandler->obtenerDatos();
+        
+        if ($accion === 'activar') {
+            $resultado = $this->usuarioService->activarUsuario($idValidado);
+            $this->responseHandler->enviarRespuesta($resultado);
+            
+        } elseif ($accion === 'cambiar-contrasenia') {
+            if (empty($datos['contraseniaActual']) || empty($datos['contraseniaNueva'])) {
+                $this->responseHandler->error('Contraseñas requeridas');
+            }
+            
+            $resultado = $this->usuarioService->cambiarContrasenia(
+                $idValidado,
+                $datos['contraseniaActual'],
+                $datos['contraseniaNueva']
+            );
+            $this->responseHandler->enviarRespuesta($resultado);
+            
+        } else {
+            $this->responseHandler->error('Acción no válida para PATCH');
+        }
+    }
+    
+    private function manejarDelete(?string $id): void 
+    {
+        $idValidado = $this->validarId($id);
+        $resultado = $this->usuarioService->eliminarUsuario($idValidado);
+        $this->responseHandler->enviarRespuesta($resultado);
+    }
+}
+
+/**
  * Router principal que coordina los controllers
  */
 class Router 
@@ -361,6 +527,11 @@ class Router
                 $this->requestHandler,
                 $this->responseHandler,
                 $this->serviceFactory
+            ),
+            'usuarios' => new UsuarioController(
+                $this->requestHandler,
+                $this->responseHandler,
+                $this->serviceFactory
             )
         ];
     }
@@ -378,7 +549,7 @@ class Router
                     'exito' => true,
                     'mensaje' => 'API funcionando correctamente',
                     'version' => '1.0',
-                    'recursos_disponibles' => ['productos']
+                    'recursos_disponibles' => ['productos', 'usuarios']
                 ]);
             }
             
