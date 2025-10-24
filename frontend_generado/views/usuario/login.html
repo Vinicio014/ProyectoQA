@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - Uniformes Deportivos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            max-width: 450px;
+            width: 100%;
+            margin: 20px;
+        }
+        
+        .login-header {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: white;
+            padding: 3rem 2rem 2rem;
+            text-align: center;
+        }
+        
+        .login-header i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        
+        .login-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .login-body {
+            padding: 2.5rem 2rem;
+        }
+        
+        .form-control {
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .form-control:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.1);
+        }
+        
+        .btn-login {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            border: none;
+            color: white;
+            transition: all 0.3s;
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+        }
+        
+        .back-home a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .alert {
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <i class="fas fa-tshirt"></i>
+            <h1>Uniformes Deportivos</h1>
+            <p class="mb-0">Inicia sesión para continuar</p>
+        </div>
+        
+        <div class="login-body">
+            <div id="mensaje" style="display: none;"></div>
+            
+            <form id="loginForm">
+                <div class="form-floating mb-3">
+                    <input type="email" class="form-control" id="correo" placeholder="correo@ejemplo.com" required>
+                    <label><i class="fas fa-envelope me-2"></i>Correo Electrónico</label>
+                </div>
+                
+                <div class="form-floating mb-3">
+                    <input type="password" class="form-control" id="contrasenia" placeholder="Contraseña" required>
+                    <label><i class="fas fa-lock me-2"></i>Contraseña</label>
+                </div>
+                
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="recordar">
+                    <label class="form-check-label">Recordarme</label>
+                </div>
+                
+                <button type="submit" class="btn btn-login">
+                    <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
+                </button>
+            </form>
+            
+            <div class="text-center mt-3">
+                <small class="text-muted">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Usuarios de prueba:</strong><br>
+                    Admin: juan.perez@uniformes.com / admin123<br>
+                    Vendedor: maria.garcia@uniformes.com / vendedor123
+                </small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="back-home text-center mt-3">
+        <a href="../../index.html">
+            <i class="fas fa-arrow-left"></i> Volver al inicio
+        </a>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../../js/auth.js"></script>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const correo = document.getElementById('correo').value;
+            const contrasenia = document.getElementById('contrasenia').value;
+            const mensaje = document.getElementById('mensaje');
+            
+            const btn = e.target.querySelector('button[type="submit"]');
+            const btnText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Iniciando...';
+            
+            try {
+                await login(correo, contrasenia);
+            } catch (error) {
+                mensaje.className = 'alert alert-danger';
+                mensaje.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + error.message;
+                mensaje.style.display = 'block';
+                
+                setTimeout(() => {
+                    mensaje.style.display = 'none';
+                }, 5000);
+                
+                btn.disabled = false;
+                btn.innerHTML = btnText;
+            }
+        });
+    </script>
+</body>
+</html>

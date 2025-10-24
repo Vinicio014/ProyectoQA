@@ -9,10 +9,16 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // Autoload y configuración
-require_once __DIR__ . '/../conf/database.php';
+if (!class_exists('Database')) {
+    require_once __DIR__ . '/../conf/database.php';
+}
+
 
 // Incluir manualmente las clases necesarias con namespaces
-// Entities
+
+require_once __DIR__ . '/../src/Entities/Interfaces/ProductoEntityInterface.php';
+require_once __DIR__ . '/../src/Entities/Interfaces/CategoriaEntityInterface.php';
+
 require_once __DIR__ . '/../src/Entities/ProductoEntity.php';
 require_once __DIR__ . '/../src/Entities/CategoriaEntity.php';
 require_once __DIR__ . '/../src/Entities/UsuarioEntity.php';
@@ -62,6 +68,7 @@ class HttpHeaders
         }
     }
 }
+
 
 /**
  * Manejador de respuestas HTTP
