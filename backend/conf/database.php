@@ -5,7 +5,7 @@ if (!class_exists('Database')) {
         private $host = "localhost";
         private $db_name = "Uniformes_deportivos";
         private $username = "root";
-        private $password = "Yd]U(P/>.B";
+        private $password = "esssecond";
         private $conn;
 
         public function getConnection() {
