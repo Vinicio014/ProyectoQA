@@ -1,7 +1,7 @@
 <?php
 /**
  * PRUEBAS UNITARIAS SIMPLES PARA EL SERVICIO DE PRODUCTO
- * Navegador: http://localhost/ProyectoQA/backend/tests/Unit/Services/test_producto_simple.php
+ * Enlace para probar pruebas unitarias: http://localhost/ProyectoQA/backend/tests/Unit/Services/test_producto_simple.php
  */
 
 // Cargar archivos necesarios (en orden correcto)
